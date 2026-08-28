@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <title>SURE. — Caçador de Imóveis Idealista</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- ── SIDEBAR ──────────────────────────────────────────────────── -->
+  <aside class="sidebar">
+
+    <!-- Brand / Logo SURE. -->
+    <div class="brand">
+      <div class="brand-logo-box">
+        <svg viewBox="0 0 60 72" xmlns="http://www.w3.org/2000/svg">
+          <path d="M30 4 L52 14 L52 38 C52 52 40 64 30 68 C20 64 8 52 8 38 L8 14 Z" fill="rgba(255,255,255,.15)"/>
+          <text x="30" y="50" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="900" font-size="44" fill="white">S</text>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <h2>SURE<span>.</span></h2>
+        <small>Simple Unique Real Estate</small>
+      </div>
+    </div>
+
+    <!-- Quick Filter: All vs Overdue -->
+    <div class="sidebar-filter-bar">
+      <button id="filter-all-clients" class="sidebar-tab-btn active">
+        Todos (<span id="sidebar-count-all">0</span>)
+      </button>
+      <button id="filter-overdue-clients" class="sidebar-tab-btn tab-overdue" title="Ver apenas clientes com prazos em atraso">
+        <i class="fa-solid fa-triangle-exclamation"></i> Atrasados (<span id="sidebar-count-overdue">0</span>)
+      </button>
+    </div>
+
+    <!-- Consultants & Clients Accordion list -->
+    <div class="sidebar-section">
+      <div class="section-header">
+        <h3><i class="fa-solid fa-user-tie"></i> Consultores & Clientes</h3>
+        <div style="display:flex;gap:4px;">
+          <button id="btn-google-drive" class="btn-icon-sm" title="Google Drive & Sheets: Conexão e Pastas">
+            <i class="fa-brands fa-google-drive"></i>
+          </button>
+          <button id="btn-import-zoho" class="btn-icon-sm" title="Importar Lista de Clientes do Zoho CRM (Excel/CSV)">
+            <i class="fa-solid fa-file-excel"></i>
+          </button>
+          <button id="btn-add-consultant" class="btn-icon-sm" title="Adicionar Novo Consultor">
+            <i class="fa-solid fa-user-plus"></i>
+          </button>
+          <button id="btn-add-client" class="btn-icon-sm" title="Adicionar Novo Cliente">
+            <i class="fa-solid fa-plus"></i>
+          </button>
+        </div>
+      </div>
+      <input type="file" id="file-input-zoho" accept=".xlsx,.xls,.csv" style="display:none;">
+
+      <div id="consultants-accordion" class="consultants-accordion">
+        <div class="loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i> A carregar...</div>
+      </div>
+    </div>
+
+    <div class="sidebar-footer">
+      <div class="priority-legend">
+        <span class="legend-item"><span class="badge-priority badge-su">SU</span> 2 dias</span>
+        <span class="legend-item"><span class="badge-priority badge-u">U</span> 5 dias</span>
+        <span class="legend-item"><span class="badge-priority badge-s">S</span> 10 dias</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ──────────────────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Header -->
+    <header class="top-header">
+      <div class="client-title-group">
+        <div class="client-title-row">
+          <h1 id="current-client-name">Selecione um Cliente</h1>
+          <div id="header-priority-badge"></div>
+          <button id="btn-edit-client-header" class="btn btn-secondary btn-sm" title="Editar critérios deste cliente" disabled>
+            <i class="fa-solid fa-pen"></i> Editar Procura
+          </button>
+          <button id="btn-delete-client-header" class="btn btn-secondary btn-sm btn-danger-hover" title="Eliminar este cliente" disabled>
+            <i class="fa-solid fa-trash-can"></i> Apagar
+          </button>
+        </div>
+        <div id="client-badges" class="badges-container"></div>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-open-chat" class="btn btn-secondary" style="background:#5B7FA6;color:#fff;border-color:#5B7FA6;" title="Adicionar ou atualizar cliente por texto livre com IA">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> Assistente IA
+        </button>
+        <button id="btn-open-idealista" class="btn btn-secondary" title="Abrir a pesquisa deste cliente diretamente no Idealista">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Idealista
+        </button>
+        <button id="btn-drive-folder" class="btn btn-secondary" title="Verificar ou criar pasta do cliente no Google Drive">
+          <i class="fa-solid fa-folder"></i> <span id="label-drive-folder">Criar Pasta</span>
+        </button>
+        <button id="btn-drive-word" class="btn btn-secondary" title="Gerar ou abrir Ficha/Word na pasta do cliente">
+          <i class="fa-solid fa-file-word"></i> <span id="label-drive-word">Criar Word</span>
+        </button>
+        <button id="btn-drive-open" class="btn btn-secondary" title="Abrir a pasta deste cliente no Google Drive">
+          <i class="fa-brands fa-google-drive"></i> Consultar na Drive
+        </button>
+      </div>
+    </header>
+
+    <!-- TOP 3 Recommendations Panel -->
+    <section id="top3-section" class="top3-container hidden">
+      <div class="top3-header">
+        <div class="top3-title">
+          <i class="fa-solid fa-star" style="color:#C79433;"></i>
+          <div>
+            <h3>Top 3 Recomendados para Envio</h3>
+            <small>Os 3 imóveis mais relevantes para este cliente (excluindo os já enviados)</small>
+          </div>
+        </div>
+        <div class="top3-actions">
+          <button id="btn-copy-top3" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-copy"></i> Copiar os 3 Links Juntos
+          </button>
+          <button id="btn-mark-top3-sent" class="btn btn-secondary btn-sm">
+            <i class="fa-solid fa-envelope-circle-check"></i> Marcar os 3 como Já Enviados
+          </button>
+        </div>
+      </div>
+      <div id="top3-grid" class="top3-grid"></div>
+    </section>
+
+    <!-- Bot Status Banner -->
+    <div id="scrape-status" class="scrape-status-banner hidden">
+      <div class="status-icon"><i class="fa-solid fa-robot fa-spin"></i></div>
+      <div class="status-content">
+        <h4>Bot SURE a pesquisar no Idealista...</h4>
+        <p>A extrair anúncios reais com fotografias dos imóveis, preços e links. Se surgir o slider de segurança, deslize-o na janela do navegador aberta.</p>
+      </div>
+    </div>
+
+    <!-- Controls Bar (Filter Tabs + Search + Export) -->
+    <div class="controls-bar">
+      <div class="filter-tabs">
+        <button class="tab-btn active" data-filter="all">Todos (<span id="count-all">0</span>)</button>
+        <button class="tab-btn" data-filter="novo">Novos (<span id="count-novo">0</span>)</button>
+        <button class="tab-btn" data-filter="enviado">✉ Enviados (<span id="count-enviado">0</span>)</button>
+        <button class="tab-btn" data-filter="interesse">💡 Tem Interesse (<span id="count-interesse">0</span>)</button>
+        <button class="tab-btn" data-filter="visita">📅 Visitas (<span id="count-visita">0</span>)</button>
+        <button class="tab-btn" data-filter="favorito">⭐ Favoritos (<span id="count-favorito">0</span>)</button>
+        <button class="tab-btn" data-filter="rejeitado">Descartados (<span id="count-rejeitado">0</span>)</button>
+      </div>
+
+      <div class="export-actions">
+        <div class="search-box">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="input-search-filter" placeholder="Filtrar por zona, título, preço...">
+        </div>
+        <button id="btn-create-word-doc" class="btn btn-secondary btn-sm" title="Criar Proposta Word/Google Doc na pasta da Google Drive do cliente">
+          <i class="fa-solid fa-file-word" style="color:#2b6cb0;"></i> Gerar Word na Drive
+        </button>
+        <button id="btn-export-csv" class="btn btn-secondary btn-sm" title="Exportar tabela para Excel/CSV">
+          <i class="fa-solid fa-file-csv"></i> Exportar CSV
+        </button>
+      </div>
+    </div>
+
+    <!-- Listings Grid -->
+    <section class="listings-container">
+      <div id="listings-grid" class="listings-grid">
+        <div class="empty-state">
+          <i class="fa-solid fa-building-circle-exclamation"></i>
+          <h3>Nenhum imóvel carregado</h3>
+          <p>Selecione um cliente e clique em <strong>Pesquisar com Bot</strong> para procurar automaticamente no Idealista com fotos e links reais.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Floating Selection Dock for Custom Property Sending -->
+    <div id="selection-dock" class="selection-dock hidden">
+      <div class="selection-dock-info">
+        <div class="selection-count-badge">
+          <i class="fa-solid fa-layer-group"></i> <span id="selection-count">0</span> imóveis selecionados
+        </div>
+        <span class="selection-hint">Prontos para copiar e enviar ao cliente</span>
+      </div>
+      <div class="selection-dock-actions">
+        <button id="btn-copy-selection" class="btn btn-primary btn-sm">
+          <i class="fa-solid fa-copy"></i> Copiar Selecionados Juntos
+        </button>
+        <button id="btn-mark-selection-sent" class="btn btn-secondary btn-sm">
+          <i class="fa-solid fa-envelope-circle-check"></i> Marcar Selecionados como Já Enviados
+        </button>
+        <button id="btn-clear-selection" class="btn btn-secondary btn-sm" title="Desmarcar todos">
+          <i class="fa-solid fa-xmark"></i> Limpar
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ── MODALS ───────────────────────────────────────────────────────── -->
+
+<!-- Modal 1: Property Details with Photo Slider Carousel -->
+<div id="modal-detail" class="modal-backdrop hidden">
+  <div class="modal-card modal-card-lg">
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span class="badge badge-highlight" id="modal-detail-status">Novo</span>
+        <h3 id="modal-detail-title" style="margin:0;">Detalhes do Imóvel</h3>
+      </div>
+      <button class="btn-close-modal" title="Fechar">&times;</button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Photo Carousel Slider -->
+      <div class="slider-container" id="slider-wrapper">
+        <div class="slider-image-box">
+          <img id="slider-main-img" src="" alt="Foto do Imóvel">
+          <div class="slider-counter" id="slider-counter">Foto 1 de 1</div>
+          <button class="slider-btn slider-prev" id="slider-btn-prev" title="Foto anterior"><i class="fa-solid fa-chevron-left"></i></button>
+          <button class="slider-btn slider-next" id="slider-btn-next" title="Próxima foto"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+        <div class="slider-thumbnails" id="slider-thumbs"></div>
+      </div>
+
+      <!-- Price & Location -->
+      <div class="modal-detail-info">
+        <div class="modal-price-row">
+          <div class="modal-price-tag" id="modal-detail-price">Consultar €</div>
+          <div class="modal-location-tag" id="modal-detail-location"><i class="fa-solid fa-location-dot"></i> <span></span></div>
+        </div>
+
+        <!-- Specs pills -->
+        <div class="modal-specs-row" id="modal-detail-specs"></div>
+
+        <!-- Description -->
+        <div class="modal-description-box" id="modal-description-box">
+          <h4><i class="fa-solid fa-align-left"></i> Descrição do Anúncio</h4>
+          <p id="modal-detail-description">Sem descrição detalhada disponível.</p>
+        </div>
+
+        <!-- Action buttons inside modal -->
+        <div class="modal-detail-actions">
+          <button id="modal-copy-link-btn" class="btn btn-primary">
+            <i class="fa-solid fa-copy"></i> Copiar Link Oficial
+          </button>
+          <button id="modal-toggle-sent-btn" class="btn btn-secondary">
+            <i class="fa-solid fa-envelope-circle-check"></i> Marcar como Já Enviado
+          </button>
+          <a id="modal-open-idealista-link" href="#" target="_blank" class="btn btn-secondary">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir no Idealista
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 2: Create / Edit Client with Comprehensive Preferences -->
+<div id="modal-client" class="modal-backdrop hidden">
+  <div class="modal-card modal-card-lg">
+    <div class="modal-header">
+      <h3 id="modal-client-title">Novo Cliente</h3>
+      <button class="btn-close-modal">&times;</button>
+    </div>
+    <form id="form-client" class="modal-form">
+      <input type="hidden" id="client-id">
+      
+      <!-- Basic Info -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-name">Nome do Cliente *</label>
+          <input type="text" id="client-name" required placeholder="Ex: Maria Santos">
+        </div>
+        <div class="form-group">
+          <label for="client-consultant">Consultor Responsável *</label>
+          <select id="client-consultant" required></select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-priority">Prioridade de Envio *</label>
+          <select id="client-priority" required>
+            <option value="SU">SU — Super Urgente (Envio a cada 2 dias)</option>
+            <option value="U" selected>U — Urgente (Envio a cada 5 dias)</option>
+            <option value="S">S — Standard (Envio a cada 10 dias)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="client-op">Operação *</label>
+          <select id="client-op" required>
+            <option value="comprar">Comprar</option>
+            <option value="arrendar">Arrendar</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-type">Tipo de Imóvel Principal</label>
+          <select id="client-type">
+            <option value="apartamentos">Apartamento / Andar</option>
+            <option value="moradias">Moradia / Vivenda</option>
+            <option value="moradia-terrea">Moradia Térrea</option>
+            <option value="terrenos">Terreno / Lote</option>
+            <option value="predios">Prédio / Edifício</option>
+            <option value="lojas">Loja / Espaço Comercial</option>
+            <option value="escritorios">Escritório</option>
+            <option value="garagens">Garagem / Estacionamento</option>
+            <option value="trespasse">Trespasse Comercial</option>
+            <option value="empreendimentos">Construção Nova / Empreendimento</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="client-location">Localização / Concelho / Freguesia *</label>
+          <input type="text" id="client-location" required placeholder="Ex: lisboa, porto, braga, arroios">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-min-price">Preço Mínimo (€)</label>
+          <input type="number" id="client-min-price" placeholder="Ex: 150000">
+        </div>
+        <div class="form-group">
+          <label for="client-max-price">Preço Máximo (€)</label>
+          <input type="number" id="client-max-price" placeholder="Ex: 350000">
+        </div>
+      </div>
+
+      <!-- Typologies -->
+      <div class="form-group">
+        <label>Tipologias Pretendidas</label>
+        <div class="checkbox-grid">
+          <label><input type="checkbox" name="typology" value="t0"> T0</label>
+          <label><input type="checkbox" name="typology" value="t1"> T1</label>
+          <label><input type="checkbox" name="typology" value="t2" checked> T2</label>
+          <label><input type="checkbox" name="typology" value="t3" checked> T3</label>
+          <label><input type="checkbox" name="typology" value="t4"> T4</label>
+          <label><input type="checkbox" name="typology" value="t5"> T5+</label>
+        </div>
+      </div>
+
+      <!-- Amenities & Features -->
+      <div class="form-group">
+        <label>Comodidades & Características Exigidas</label>
+        <div class="amenities-grid">
+          <label><input type="checkbox" name="amenities" value="garagem"> 🚗 Garagem (Box)</label>
+          <label><input type="checkbox" name="amenities" value="lugar-garagem"> 🅿️ Lugar de Garagem</label>
+          <label><input type="checkbox" name="amenities" value="piscina"> 🏊 Piscina</label>
+          <label><input type="checkbox" name="amenities" value="elevador"> 🛗 Elevador</label>
+          <label><input type="checkbox" name="amenities" value="construcao-nova"> 🏗️ Construção Nova</label>
+          <label><input type="checkbox" name="amenities" value="varanda"> 🌅 Varanda / Terraço</label>
+          <label><input type="checkbox" name="amenities" value="ar-condicionado"> ❄️ Ar Condicionado</label>
+          <label><input type="checkbox" name="amenities" value="jardim"> 🌿 Jardim</label>
+        </div>
+      </div>
+
+      <!-- Floor / Elevator requirement & Notes -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="client-elevator-floor">Elevador Exigido a Partir de Que Piso?</label>
+          <select id="client-elevator-floor">
+            <option value="0" selected>Qualquer piso (ou indiferente)</option>
+            <option value="1">A partir do 1º Piso</option>
+            <option value="2">A partir do 2º Piso</option>
+            <option value="3">A partir do 3º Piso</option>
+            <option value="4">A partir do 4º Piso ou superior</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="client-notes">Notas & Preferências Extra</label>
+          <input type="text" id="client-notes" placeholder="Ex: exposição solar sul/poente, perto de escolas...">
+        </div>
+      </div>
+
+      <!-- Custom Idealista Search URL -->
+      <div class="form-group">
+        <label for="client-custom-search-url">🔗 Link Direto de Pesquisa Idealista (Opcional)</label>
+        <input type="url" id="client-custom-search-url" placeholder="Cole aqui um link de pesquisa desenhado no mapa ou composto se preferir...">
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal 3: Create Consultant -->
+<div id="modal-consultant" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:440px;">
+    <div class="modal-header">
+      <h3>Novo Consultor</h3>
+      <button class="btn-close-modal">&times;</button>
+    </div>
+    <form id="form-consultant" class="modal-form">
+      <div class="form-group">
+        <label for="consultant-name">Nome do Consultor *</label>
+        <input type="text" id="consultant-name" required placeholder="Ex: João Ferreira">
+      </div>
+      <div class="form-group">
+        <label for="consultant-color">Cor de Destaque</label>
+        <select id="consultant-color">
+          <option value="#C75233">Terracota (#C75233)</option>
+          <option value="#5B7FA6">Azul Slate (#5B7FA6)</option>
+          <option value="#5B8C6A">Verde Salva (#5B8C6A)</option>
+          <option value="#8C5B7F">Púrpura (#8C5B7F)</option>
+          <option value="#C79433">Dourado (#C79433)</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Adicionar Consultor</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal 4: Import Direct Link -->
+<div id="modal-import" class="modal-backdrop hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3>Adicionar Link Direto do Idealista</h3>
+      <button class="btn-close-modal">&times;</button>
+    </div>
+    <form id="form-import" class="modal-form">
+      <div class="form-group">
+        <label for="import-url">URL do Imóvel no Idealista *</label>
+        <input type="url" id="import-url" required placeholder="https://www.idealista.pt/imovel/12345678/">
+      </div>
+      <div class="form-group">
+        <label for="import-title">Título (Opcional)</label>
+        <input type="text" id="import-title" placeholder="Ex: T2 com Varanda em Arroios">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="import-price">Preço (Opcional)</label>
+          <input type="text" id="import-price" placeholder="Ex: 280.000 €">
+        </div>
+        <div class="form-group">
+          <label for="import-location">Zona (Opcional)</label>
+          <input type="text" id="import-location" placeholder="Ex: Arroios, Lisboa">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Adicionar Imóvel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal 5: Import Full HTML Page -->
+<div id="modal-html" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:650px;">
+    <div class="modal-header">
+      <h3>📄 Importar Código Fonte da Página do Idealista</h3>
+      <button class="btn-close-modal">&times;</button>
+    </div>
+    <form id="form-html" class="modal-form">
+      <div class="form-group">
+        <label style="line-height:1.7; color:var(--castanho);">
+          <strong>Como extrair 40 imóveis em 5 segundos:</strong><br>
+          1. Abra a página de pesquisa no Idealista no seu navegador.<br>
+          2. Pressione <kbd>Ctrl</kbd>+<kbd>U</kbd> (Ver Código-Fonte) → <kbd>Ctrl</kbd>+<kbd>A</kbd> (Selecionar Tudo) → <kbd>Ctrl</kbd>+<kbd>C</kbd> (Copiar).<br>
+        <textarea id="html-content" rows="8" required placeholder="Cole aqui o código fonte da página (Ctrl+V)..."></textarea>
+      </div>
+      <div class="modal-actions" style="display:flex; gap:0.6rem;">
+        <button type="button" id="btn-paste-clipboard" class="btn btn-secondary" style="margin-right:auto;">
+          <i class="fa-solid fa-paste"></i> Colar da Área de Transferência
+        </button>
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Extrair Imóveis 🚀</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- Modal 6: Bookmarklet 1-Click Capture -->
+<div id="modal-bookmarklet" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:640px;">
+    <div class="modal-header">
+      <h3>⚡ Marcador de Captura Rápida (1-Clique)</h3>
+      <button class="btn-close-modal">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:1.5rem; line-height:1.7; color:var(--castanho);">
+      <p style="margin-bottom:1rem; font-size:1.02rem;">
+        Se a barra de favoritos não estiver visível ou não conseguir arrastar, pode <strong>adicionar o marcador manualmente em 10 segundos</strong>:
+      </p>
+
+      <div style="background:#FFF; border:1px solid #ddd; border-radius:8px; padding:1.2rem; margin-bottom:1.2rem;">
+        <label style="font-weight:700; font-size:0.9rem; display:block; margin-bottom:0.4rem; color:var(--basalto);">
+          1. Copie o Código do Marcador:
+        </label>
+        <div style="display:flex; gap:0.5rem;">
+          <input type="text" id="bookmarklet-code-input" readonly 
+                 style="font-family:monospace; font-size:0.82rem; background:#f7f7f7; border:1px solid #ccc; border-radius:6px; padding:0.6rem; flex:1;"
+                 value="javascript:(function(){var h=document.documentElement.outerHTML;var t=document.createElement('textarea');t.value=h;t.style.position='fixed';t.style.top='-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);var d=document.createElement('div');d.style='position:fixed;top:20px;right:20px;background:#2a7a2a;color:#fff;padding:1rem 1.5rem;border-radius:10px;z-index:999999;font-family:sans-serif;font-size:1rem;box-shadow:0 4px 16px rgba(0,0,0,0.3)';d.innerHTML='&#9989; P&aacute;gina copiada! Volte &agrave; SURE e clique em <strong>Colar P&aacute;gina</strong>';document.body.appendChild(d);setTimeout(function(){d.remove()},4000);})();">
+          <button type="button" id="btn-copy-bm-code" class="btn btn-primary" style="white-space:nowrap;">
+            <i class="fa-solid fa-copy"></i> Copiar Código
+          </button>
+        </div>
+      </div>
+
+      <div style="background:var(--off-white); border-left:4px solid var(--terracota); padding:1.1rem; border-radius:6px; font-size:0.92rem;">
+        <strong>2. Como adicionar nos Marcadores do Chrome:</strong><br>
+        • Pressione no seu teclado: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>O</kbd> (Abre o Gestor de Favoritos).<br>
+        • No canto superior direito, clique nos <strong>3 pontinhos</strong> (⋮) → <strong>"Adicionar novo marcador"</strong>.<br>
+        • <strong>Nome:</strong> <code>📥 Capturar Imóveis SURE</code><br>
+        • <strong>URL:</strong> Cole o código copiado acima (<kbd>Ctrl</kbd> + <kbd>V</kbd>) e clique em <strong>Guardar</strong>.
+      </div>
+    </div>
+    <div class="modal-actions" style="padding:1rem 1.5rem; border-top:1px solid #eee;">
+      <button type="button" class="btn btn-primary btn-close-modal" style="width:100%;">Tudo Pronto!</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 7: Chat Assistant NLP -->
+<div id="modal-chat" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:700px; display:flex; flex-direction:column; max-height:85vh;">
+    <div class="modal-header" style="background:#5B7FA6; color:#fff; padding:1.2rem 1.5rem;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <i class="fa-solid fa-wand-magic-sparkles" style="font-size:1.3rem;"></i>
+        <div>
+          <h3 style="margin:0; font-size:1.15rem; color:#fff;">Assistente IA — Qualificação de Clientes</h3>
+          <p style="margin:0; font-size:0.8rem; opacity:0.9;">Escreva ou cole mensagens em linguagem natural para registar/atualizar clientes</p>
+        </div>
+      </div>
+      <button class="btn-close-modal" style="color:#fff;">&times;</button>
+    </div>
+
+    <!-- Chat Message History -->
+    <div id="chat-messages" style="flex:1; overflow-y:auto; padding:1.2rem; display:flex; flex-direction:column; gap:1rem; background:#FBF9F6; min-height:280px; max-height:400px;">
+      <div class="chat-msg ai-msg" style="display:flex; gap:0.6rem; align-items:flex-start;">
+        <div style="background:#5B7FA6; color:#fff; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:0.9rem;">
+          <i class="fa-solid fa-robot"></i>
+        </div>
+        <div style="background:#fff; border:1px solid #E2D9D0; border-radius:10px; padding:0.8rem 1rem; max-width:85%; font-size:0.92rem; line-height:1.5; color:#2D2D2D; box-shadow:0 2px 5px rgba(0,0,0,0.03);">
+          Olá! Pode colar ou escrever qualquer texto sobre um cliente. Por exemplo:<br>
+          <em style="color:#5B7FA6; display:block; margin-top:0.4rem; font-size:0.88rem;">"O João Ferreira quer comprar uma moradia em Guimarães até 380 mil euros, T3 ou T4 com garagem e jardim. É cliente da Ana Silva."</em>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Input Box -->
+    <div style="padding:1rem 1.2rem; background:#fff; border-top:1px solid #E2D9D0;">
+      <form id="form-chat" style="display:flex; gap:0.6rem; align-items:flex-end;">
+        <textarea id="chat-input" placeholder="Escreva ou cole aqui as notas ou mensagem de WhatsApp do cliente..." 
+                  style="flex:1; border:1px solid #D1C7BD; border-radius:8px; padding:0.75rem; font-family:inherit; font-size:0.92rem; resize:none; height:65px; outline:none;"
+                  required></textarea>
+        <button type="submit" id="btn-chat-send" class="btn btn-primary" style="height:65px; padding:0 1.4rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.2rem; background:#5B7FA6; border-color:#5B7FA6;">
+          <i class="fa-solid fa-paper-plane" style="font-size:1.1rem;"></i>
+          <span style="font-size:0.75rem;">Processar</span>
+        </button>
+      </form>
+      <div style="font-size:0.75rem; color:#888; margin-top:0.4rem; display:flex; justify-content:space-between;">
+        <span>Prima <kbd>Enter</kbd> para enviar (ou Shift+Enter para nova linha)</span>
+        <span>⚡ Atualiza ou cria a ficha automaticamente</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODAL: GOOGLE DRIVE & SHEETS SETTINGS ────────────────────── -->
+<div id="modal-drive-settings" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:560px;">
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <i class="fa-brands fa-google-drive" style="color:#2b6cb0; font-size:1.4rem;"></i>
+        <h3 style="margin:0;">Integração Google Drive & Sheets</h3>
+      </div>
+      <button class="btn-close-modal" id="btn-close-drive-modal">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:1.4rem;">
+      <div id="drive-status-badge" style="display:flex; align-items:center; gap:0.6rem; padding:0.8rem 1rem; border-radius:8px; margin-bottom:1.2rem; background:#f0f7ff; border:1px solid #cce3ff;">
+        <i class="fa-solid fa-circle-notch fa-spin" style="color:#2b6cb0;" id="drive-status-icon"></i>
+        <div style="flex:1;">
+          <strong id="drive-status-title" style="display:block; font-size:0.95rem;">A verificar conexão com Google Drive...</strong>
+          <small id="drive-status-desc" style="color:#555;">Pasta Raiz: 12ZPicg-lxXy2nyNowmvEUCQNkQi_smaJ</small>
+        </div>
+      </div>
+
+      <p style="font-size:0.9rem; color:#444; line-height:1.5; margin-bottom:1rem;">
+        Ao marcar um imóvel como <strong>"Enviado"</strong>, o sistema:
+        <br>1. 📁 Localiza a pasta do cliente no Google Drive (respeitando a nomenclatura existente).
+        <br>2. 📊 Adiciona a linha na folha Excel / Google Sheets do cliente no formato exato das vossas colunas.
+        <br>3. 📄 Permite gerar uma proposta em Word/Google Doc na pasta da Drive com 1 clique.
+      </p>
+
+      <!-- Opção A: Webhook URL (Mais fácil e sem restrições) -->
+      <div style="background:#f0fff4; border:1px solid #c6f6d5; border-radius:8px; padding:1rem; margin-bottom:1rem;">
+        <label style="display:block; font-weight:700; font-size:0.9rem; color:#22543d; margin-bottom:0.4rem;">
+          <i class="fa-solid fa-link"></i> Opção Recomendada: Google Apps Script Webhook
+        </label>
+        <div style="display:flex; gap:0.4rem; margin-bottom:0.4rem;">
+          <input type="url" id="input-drive-webhook" placeholder="https://script.google.com/macros/s/.../exec" style="flex:1; padding:0.6rem 0.8rem; border:1px solid #9ae6b4; border-radius:6px; font-size:0.85rem; outline:none;">
+          <button type="button" id="btn-save-webhook" class="btn btn-primary btn-sm" style="background:#276749; border-color:#276749;">Ligar</button>
+        </div>
+        <small style="color:#2f855a; display:block; font-size:0.78rem;">Bypassa qualquer restrição da Google Cloud. Basta colar o URL do Webhook do Google Apps Script.</small>
+      </div>
+
+      <!-- Opção B: Ficheiro JSON Service Account -->
+      <div style="background:#faf8f5; border:1px dashed #d1c7bd; border-radius:8px; padding:1rem; margin-bottom:1.2rem;">
+        <label style="display:block; font-weight:600; font-size:0.88rem; margin-bottom:0.4rem;">
+          <i class="fa-solid fa-key"></i> Opção Alternativa: Ficheiro JSON (Service Account)
+        </label>
+        <input type="file" id="file-input-drive-json" accept=".json" style="margin-bottom:0.4rem; font-size:0.85rem; width:100%;">
+        <small style="color:#666; display:block;">Para contas com criação de chaves JSON ativada no GCP.</small>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:0.6rem;">
+        <a href="https://drive.google.com/drive/folders/12ZPicg-lxXy2nyNowmvEUCQNkQi_smaJ" target="_blank" class="btn btn-secondary">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir Pasta na Drive
+        </a>
+        <button type="button" class="btn btn-primary" id="btn-save-drive-modal">
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container" class="toast-container"></div>
+<script src="/main.js"></script>
+</body>
+</html>

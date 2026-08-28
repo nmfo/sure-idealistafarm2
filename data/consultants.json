@@ -1,0 +1,32 @@
+[
+  {
+    "id": "consultant-geral",
+    "name": "Geral / Equipa SURE",
+    "color": "#938C85"
+  },
+  {
+    "id": "consultant-rui",
+    "name": "Rui Rebelo",
+    "color": "#5B7FA6"
+  },
+  {
+    "id": "consultant-nuno",
+    "name": "Nuno Oliveira",
+    "color": "#C75233"
+  },
+  {
+    "id": "consultant-diogo",
+    "name": "Diogo Sousa",
+    "color": "#5B8C6A"
+  },
+  {
+    "id": "consultant-gardiana",
+    "name": "Gardiana Ferreira",
+    "color": "#8C5B7F"
+  },
+  {
+    "id": "consultant-elizabete",
+    "name": "Elizabete Martins",
+    "color": "#C79433"
+  }
+]
