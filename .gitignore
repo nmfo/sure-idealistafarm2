@@ -1,0 +1,9 @@
+node_modules/
+.system_generated/
+*.log
+data/bot_persistent_profile/
+data/bot_sessions/
+data/sure_browser_profile/
+data/last_html_debug.html
+test_url.html
+.env
