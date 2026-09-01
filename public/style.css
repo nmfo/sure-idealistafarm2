@@ -104,6 +104,58 @@ h1,h2,h3,h4 { font-family: 'Outfit', sans-serif; font-weight: 700; }
 .sidebar-tab-btn.tab-overdue.active { background: var(--danger); border-color: var(--danger); color: #fff; }
 .sidebar-tab-btn.tab-overdue:not(.active) { color: #FFA39E; }
 
+/* Sidebar Client Search Box */
+.sidebar-search-box {
+  position: relative;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+}
+.sidebar-search-box i.fa-magnifying-glass {
+  position: absolute;
+  left: 10px;
+  color: var(--cinza);
+  font-size: .8rem;
+  pointer-events: none;
+}
+.sidebar-search-box input {
+  width: 100%;
+  background: rgba(255, 255, 255, .07);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: var(--r-sm);
+  padding: 8px 28px 8px 30px;
+  color: #fff;
+  font-size: .8rem;
+  font-family: inherit;
+  outline: none;
+  transition: var(--t);
+}
+.sidebar-search-box input:focus {
+  background: rgba(255, 255, 255, .12);
+  border-color: var(--terracota);
+  box-shadow: 0 0 0 2px rgba(199, 82, 51, .25);
+}
+.sidebar-search-box input::placeholder {
+  color: rgba(255, 255, 255, .4);
+}
+.btn-clear-search {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, .5);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.btn-clear-search:hover {
+  color: #fff;
+}
+
 .sidebar-section { margin-top: 16px; flex: 1; overflow-y: auto; }
 
 .section-header {
@@ -426,10 +478,25 @@ h1,h2,h3,h4 { font-family: 'Outfit', sans-serif; font-weight: 700; }
 }
 .property-card:hover .card-image-container img { transform: scale(1.06); }
 
+.card-badges-top-left {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 5;
+}
+
 .badge-status {
-  position: absolute; top: 10px; left: 10px;
-  padding: 3px 10px; border-radius: 10px;
-  font-size: .69rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: .69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  display: inline-flex;
+  align-items: center;
 }
 .status-novo      { background: var(--terracota); color: #fff; }
 .status-enviado   { background: var(--sent); color: #fff; }
@@ -819,3 +886,262 @@ kbd {
 
 @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
 @keyframes slideIn { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+/* ── Portal Buttons Group ────────────────────────────────── */
+.portal-buttons-group {
+  display: inline-flex;
+  background: var(--off-white);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 3px;
+  gap: 3px;
+}
+.btn-portal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: var(--r-sm);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: var(--t);
+  color: var(--castanho);
+  text-decoration: none;
+}
+.btn-portal:hover {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.portal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid rgba(0,0,0,0.15);
+}
+.idealista-dot { background: #b8cf20; }
+.remax-dot { background: linear-gradient(135deg, #003da5 50%, #e11b22 50%); }
+.zome-dot { background: linear-gradient(135deg, #ff4d6d 50%, #111111 50%); }
+.arys-dot { background: #111111; }
+
+.btn-portal-idealista:hover { color: #5a6600; }
+.btn-portal-remax:hover { color: #003da5; }
+.btn-portal-zome:hover { color: #ff4d6d; }
+.btn-portal-arys:hover { color: #111111; }
+
+/* ── Portal Badges on Property Cards ─────────────────────── */
+.badge-source {
+  font-size: 0.70rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.badge-source.source-idealista {
+  background: #f7f9d8;
+  color: #556b00;
+  border: 1px solid #d4e157;
+}
+.badge-source.source-remax {
+  background: linear-gradient(135deg, #003da5 50%, #e11b22 50%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.badge-source.source-zome {
+  background: linear-gradient(135deg, #ff4d6d 50%, #111111 50%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.badge-source.source-arys {
+  background: #111111;
+  color: #ffffff;
+  border: 1px solid #333333;
+}
+
+/* ── MARCADOR DE VISITAS & GOOGLE CALENDAR ─────────────────── */
+.btn-visits-top {
+  background: linear-gradient(135deg, var(--terracota) 0%, #b84326 100%) !important;
+  color: #fff !important;
+  border-color: var(--terracota-dark) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 12px rgba(199, 82, 51, 0.3);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  transition: var(--t);
+}
+.btn-visits-top:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(199, 82, 51, 0.4);
+}
+.badge-visits-counter {
+  background: #fff;
+  color: var(--terracota);
+  padding: 1px 7px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+.badge-visits-counter.has-today {
+  background: #ffeb3b;
+  color: #231F20;
+  animation: pulseVisit 2s infinite;
+}
+@keyframes pulseVisit {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+.tab-visit-btn {
+  background: transparent;
+  border: none;
+  padding: 10px 16px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--castanho);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: var(--t);
+}
+.tab-visit-btn:hover {
+  color: var(--basalto);
+}
+.tab-visit-btn.active {
+  color: var(--terracota);
+  border-bottom-color: var(--terracota);
+  background: #fff;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+}
+
+.btn-filter-visit {
+  background: #f0ebe4;
+  border: 1px solid #d8d1c9;
+  color: var(--castanho);
+  padding: 4px 10px;
+  border-radius: 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--t);
+}
+.btn-filter-visit.active, .btn-filter-visit:hover {
+  background: var(--terracota);
+  color: #fff;
+  border-color: var(--terracota);
+}
+
+.visit-card {
+  background: #fff;
+  border: 1px solid #e0d6cb;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: var(--t);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+.visit-card:hover {
+  border-color: var(--terracota);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+.visit-card.status-realizada {
+  opacity: 0.7;
+  background: #f9fbf8;
+  border-left: 4px solid var(--success);
+}
+.visit-card.status-cancelada {
+  opacity: 0.6;
+  background: #fdf8f8;
+  border-left: 4px solid var(--danger);
+  text-decoration: line-through;
+}
+.visit-card.status-agendada {
+  border-left: 4px solid var(--terracota);
+}
+
+.visit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.visit-time-badge {
+  background: #231F20;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.visit-time-badge.is-today {
+  background: var(--terracota);
+  color: #fff;
+}
+.visit-card-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--basalto);
+  margin-top: 2px;
+}
+.visit-card-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: #555;
+}
+.visit-card-details span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.visit-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px dashed #e0d6cb;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-visit-card {
+  background: #fff;
+  border: 1px solid #d8d1c9;
+  color: var(--castanho);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: var(--t);
+}
+.btn-visit-card:hover {
+  background: var(--terracota);
+  color: #fff;
+  border-color: var(--terracota);
+}
+

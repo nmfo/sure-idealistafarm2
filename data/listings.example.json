@@ -1,0 +1,14 @@
+﻿[
+  {
+    "id": "idealista-12345678",
+    "portal": "idealista",
+    "title": "Apartamento T2 em Lisboa",
+    "url": "https://www.idealista.pt/imovel/12345678/",
+    "price": 350000,
+    "location": "Lisboa",
+    "typology": "T2",
+    "size": 85,
+    "photo": "https://img4.idealista.pt/blur/WEB_LISTING/0/id.pro.pt.image.master/sample.jpg",
+    "capturedAt": "2026-08-25T10:00:00.000Z"
+  }
+]

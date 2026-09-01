@@ -16,6 +16,16 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -211,6 +221,14 @@ app.get('/api/client-search-url/:clientId', (req, res) => {
   res.json({ url });
 });
 
+app.get('/api/portals-urls/:clientId', (req, res) => {
+  const client = clientManager.getClient(req.params.clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+  const { getAllPortalUrls } = require('./portalResolvers');
+  const urls = getAllPortalUrls(client);
+  res.json({ urls });
+});
+
 // ── BOOKMARKLET 1-CLICK CAPTURE ENDPOINT ─────────────────────────────────────
 app.post('/api/import-active-client-html', (req, res) => {
   const { html, client_id } = req.body;
@@ -224,7 +242,7 @@ app.post('/api/import-active-client-html', (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente ativo não encontrado.' });
   if (!html) return res.status(400).json({ error: 'Conteúdo HTML da página não recebido.' });
 
-  const listings = parseListingsHtml(html);
+  const listings = parseListingsHtml(html, 'https://www.idealista.pt', client.location);
   if (listings.length === 0) {
     return res.status(400).json({ error: 'Nenhum imóvel detetado na página aberta.' });
   }
@@ -244,7 +262,8 @@ app.post('/api/import-active-client-html', (req, res) => {
 app.post('/api/import-html', (req, res) => {
   const { client_id, html } = req.body;
   if (!client_id || !html) return res.status(400).json({ error: 'client_id e html são obrigatórios' });
-  if (!clientManager.getClient(client_id)) return res.status(404).json({ error: 'Cliente não encontrado' });
+  const client = clientManager.getClient(client_id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   // Debug: guardar HTML completo para diagnóstico
   const fs = require('fs');
@@ -253,7 +272,7 @@ app.post('/api/import-html', (req, res) => {
     fs.writeFileSync(path.join(__dirname, 'data', 'last_html_debug.html'), html, 'utf-8');
   } catch(e) {}
 
-  const listings = parseListingsHtml(html);
+  const listings = parseListingsHtml(html, 'https://www.idealista.pt', client.location);
   if (listings.length === 0) {
     return res.status(400).json({ error: 'Nenhum imóvel encontrado no código HTML colado.' });
   }
@@ -309,6 +328,14 @@ app.get('/api/listings/:clientId', (req, res) => {
     listings = rankListingsForClient(client, listings);
   }
   res.json(listings);
+});
+
+app.delete('/api/listings/clear/:clientId', (req, res) => {
+  const { clientId } = req.params;
+  const client = clientManager.getClient(clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+  const result = clientManager.clearClientListings(clientId);
+  res.json({ success: true, ...result });
 });
 
 app.delete('/api/listings/:clientId/:listingId', (req, res) => {
@@ -501,6 +528,55 @@ app.get('/api/export/:clientId', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="SURE_Imoveis_${(client.name || 'cliente').replace(/\s+/g, '_')}.csv"`);
   res.send(csv);
+});
+
+// ── VISITS API (MARCADOR DE VISITAS & GOOGLE CALENDAR) ────────────────────────
+app.get('/api/visits', (req, res) => {
+  const { clientId, consultantId } = req.query;
+  const visits = clientManager.getVisits(clientId, consultantId);
+  res.json(visits);
+});
+
+app.post('/api/visits', async (req, res) => {
+  const visitData = req.body;
+  if (!visitData || !visitData.date) {
+    return res.status(400).json({ error: 'Data e hora da visita são obrigatórias' });
+  }
+
+  const saved = clientManager.saveVisit(visitData);
+
+  // Sincronizar com Google Calendar via Webhook se ativado
+  let googleSync = null;
+  try {
+    googleSync = await googleDriveService.scheduleVisit(saved);
+  } catch (e) {
+    console.warn('Aviso sincronização Google Calendar:', e.message);
+  }
+
+  res.json({ success: true, visit: saved, googleSync });
+});
+
+app.delete('/api/visits/:id', (req, res) => {
+  const success = clientManager.deleteVisit(req.params.id);
+  res.json({ success });
+});
+
+app.post('/api/visits/:id/status', (req, res) => {
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ error: 'Status obrigatório' });
+  const updated = clientManager.updateVisitStatus(req.params.id, status);
+  if (!updated) return res.status(404).json({ error: 'Visita não encontrada' });
+  res.json({ success: true, visit: updated });
+});
+
+app.post('/api/visits/google-sync', async (req, res) => {
+  const visitData = req.body;
+  try {
+    const result = await googleDriveService.scheduleVisit(visitData);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {

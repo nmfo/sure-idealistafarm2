@@ -1,4 +1,11 @@
-const { google } = require('googleapis');
+let google = null;
+function getGoogleApis() {
+  if (!google) {
+    const api = require('googleapis');
+    google = api.google;
+  }
+  return google;
+}
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
@@ -60,7 +67,8 @@ class GoogleDriveService {
         return false;
       }
 
-      this.auth = new google.auth.GoogleAuth({
+      const gApi = getGoogleApis();
+      this.auth = new gApi.auth.GoogleAuth({
         credentials,
         scopes: [
           'https://www.googleapis.com/auth/drive',
@@ -71,9 +79,9 @@ class GoogleDriveService {
       });
 
       const authClient = await this.auth.getClient();
-      this.drive = google.drive({ version: 'v3', auth: authClient });
-      this.sheets = google.sheets({ version: 'v4', auth: authClient });
-      this.docs = google.docs({ version: 'v1', auth: authClient });
+      this.drive = gApi.drive({ version: 'v3', auth: authClient });
+      this.sheets = gApi.sheets({ version: 'v4', auth: authClient });
+      this.docs = gApi.docs({ version: 'v1', auth: authClient });
 
       this.initialized = true;
       console.log('✅ Google Drive & Sheets API autenticado com sucesso para:', credentials.client_email);
@@ -542,6 +550,28 @@ class GoogleDriveService {
       folder,
       sheetResult
     };
+  }
+
+  /**
+   * Sincroniza marcação de visita com o Google Apps Script Webhook (se disponível)
+   */
+  async scheduleVisit(visitData) {
+    if (this.webhookUrl) {
+      try {
+        const payload = {
+          action: 'schedule_visit',
+          root_folder_id: this.rootFolderId,
+          visit: visitData
+        };
+        const res = await axios.post(this.webhookUrl, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
+        if (res.data && res.data.success) {
+          return res.data.result;
+        }
+      } catch (wErr) {
+        console.error('Aviso ao sincronizar visita com Webhook:', wErr.message);
+      }
+    }
+    return null;
   }
 }
 

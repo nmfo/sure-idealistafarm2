@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let listings = [];
   let currentFilter = 'all';
   let sidebarFilter = 'all'; // 'all' or 'overdue'
+  let clientSearchQuery = '';
 
   // Collapsed consultant states
   const collapsedConsultants = new Set();
@@ -26,20 +27,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const sidebarCountOverdue = document.getElementById('sidebar-count-overdue');
   const filterAllClientsBtn = document.getElementById('filter-all-clients');
   const filterOverdueClientsBtn = document.getElementById('filter-overdue-clients');
+  const inputClientSearch = document.getElementById('input-client-search');
+  const btnClearClientSearch = document.getElementById('btn-clear-client-search');
 
   const currentClientNameEl = document.getElementById('current-client-name');
   const headerPriorityBadge = document.getElementById('header-priority-badge');
   const clientBadgesEl = document.getElementById('client-badges');
   const btnEditClientHeader = document.getElementById('btn-edit-client-header');
+  const btnClearListingsHeader = document.getElementById('btn-clear-listings-header');
   const btnDeleteClientHeader = document.getElementById('btn-delete-client-header');
   const btnScrapeNow = document.getElementById('btn-scrape-now');
   const btnOpenIdealista = document.getElementById('btn-open-idealista');
+  const btnOpenRemax = document.getElementById('btn-open-remax');
+  const btnOpenZome = document.getElementById('btn-open-zome');
+  const btnOpenArys = document.getElementById('btn-open-arys');
   const btnShowBookmarklet = document.getElementById('btn-show-bookmarklet');
   const btnImportHtml = document.getElementById('btn-import-html');
   const scrapeStatusEl = document.getElementById('scrape-status');
   const listingsGridEl = document.getElementById('listings-grid');
   const inputSearchFilter = document.getElementById('input-search-filter');
   const btnExportCsv = document.getElementById('btn-export-csv');
+  const btnClearListings = document.getElementById('btn-clear-listings');
 
   const top3SectionEl = document.getElementById('top3-section');
   const top3GridEl = document.getElementById('top3-grid');
@@ -74,6 +82,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const sliderBtnPrev = document.getElementById('slider-btn-prev');
   const sliderBtnNext = document.getElementById('slider-btn-next');
   const sliderThumbs  = document.getElementById('slider-thumbs');
+
+  // Visits & Google Calendar Elements
+  let visits = [];
+  const btnOpenVisits = document.getElementById('btn-open-visits');
+  const badgeVisitsCount = document.getElementById('badge-visits-count');
+  const modalVisits = document.getElementById('modal-visits');
+  const formVisit = document.getElementById('form-visit');
+  const tabBtnNewVisit = document.getElementById('tab-btn-new-visit');
+  const tabBtnListVisits = document.getElementById('tab-btn-list-visits');
+  const tabPaneNewVisit = document.getElementById('tab-pane-new-visit');
+  const tabPaneListVisits = document.getElementById('tab-pane-list-visits');
+  const visitsCardsContainer = document.getElementById('visits-cards-container');
+  const visitsTabCount = document.getElementById('visits-tab-count');
+  const btnRefreshVisits = document.getElementById('btn-refresh-visits');
+  const btnAddGCalendarDirect = document.getElementById('btn-add-google-calendar-direct');
+  const btnVisitOpenMap = document.getElementById('btn-visit-open-map');
+  const visitClientSelect = document.getElementById('visit-client-select');
+  const visitConsultantSelect = document.getElementById('visit-consultant-select');
+  const visitListingTitle = document.getElementById('visit-listing-title');
+  const visitDate = document.getElementById('visit-date');
+  const visitTime = document.getElementById('visit-time');
+  const visitDuration = document.getElementById('visit-duration');
+  const visitLocation = document.getElementById('visit-location');
+  const visitPrice = document.getElementById('visit-price');
+  const visitContact = document.getElementById('visit-contact');
+  const visitLink = document.getElementById('visit-link');
+  const visitNotes = document.getElementById('visit-notes');
 
   // Detail Modal Elements
   const modalDetailStatus = document.getElementById('modal-detail-status');
@@ -144,18 +179,28 @@ document.addEventListener('DOMContentLoaded', () => {
   btnEditClientHeader.addEventListener('click', () => { if (currentClient) showClientModal(currentClient); });
   btnDeleteClientHeader.addEventListener('click', () => { if (currentClient) handleDeleteClient(currentClient.id); });
   
-  if (btnOpenIdealista) {
-    btnOpenIdealista.addEventListener('click', async () => {
-      if (!currentClient) return;
-      try {
-        const res = await fetch(`/api/client-search-url/${currentClient.id}`);
-        const data = await res.json();
-        if (data.url) window.open(data.url, '_blank');
-      } catch (e) {
-        showToast('Erro ao obter link do Idealista', 'error');
+  async function openPortalUrl(portalName) {
+    if (!currentClient) {
+      showToast('Selecione um cliente primeiro!', 'error');
+      return;
+    }
+    try {
+      const res = await fetch(`/api/portals-urls/${currentClient.id}`);
+      const data = await res.json();
+      if (data.urls && data.urls[portalName]) {
+        window.open(data.urls[portalName], '_blank');
+      } else {
+        showToast(`Link de pesquisa ${portalName.toUpperCase()} indisponível`, 'error');
       }
-    });
+    } catch (e) {
+      showToast(`Erro ao gerar link de pesquisa para ${portalName.toUpperCase()}`, 'error');
+    }
   }
+
+  if (btnOpenIdealista) btnOpenIdealista.addEventListener('click', () => openPortalUrl('idealista'));
+  if (btnOpenRemax) btnOpenRemax.addEventListener('click', () => openPortalUrl('remax'));
+  if (btnOpenZome) btnOpenZome.addEventListener('click', () => openPortalUrl('zome'));
+  if (btnOpenArys) btnOpenArys.addEventListener('click', () => openPortalUrl('arys'));
 
   if (btnShowBookmarklet) btnShowBookmarklet.addEventListener('click', () => showModal(modalBookmarklet));
   
@@ -173,10 +218,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnPasteClipboard = document.getElementById('btn-paste-clipboard');
   if (btnPasteClipboard) {
     btnPasteClipboard.addEventListener('click', async () => {
-      if (!currentClient) return;
+      if (!currentClient) {
+        showToast('Selecione um cliente na lista antes de colar os imóveis!', 'error');
+        return;
+      }
       try {
-        const text = await navigator.clipboard.readText();
-        if (text && text.trim()) {
+        let text = '';
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          text = await navigator.clipboard.readText();
+        }
+        if (text && text.trim().length > 30) {
           showToast('A extrair imóveis da área de transferência... ⏳');
           const res = await fetch('/api/import-html', {
             method: 'POST',
@@ -185,18 +236,21 @@ document.addEventListener('DOMContentLoaded', () => {
           });
           const data = await res.json();
           if (res.ok && data.success) {
-            showToast(`🎉 ${data.total_found} imóveis extraídos para ${currentClient.name}!`);
+            showToast(`🎉 ${data.total_found} imóveis extraídos para ${currentClient.name}! (${data.added_new || 0} novos)`);
             hideModals();
             await loadClients();
             await loadListings();
           } else {
             showToast(data.error || 'Nenhum imóvel detetado no conteúdo colado', 'error');
+            showModal(modalHtml);
+            const htmlTextarea = document.getElementById('html-content');
+            if (htmlTextarea) htmlTextarea.value = text;
           }
         } else {
-          showToast('A área de transferência está vazia', 'error');
+          showModal(modalHtml);
         }
       } catch (e) {
-        showToast('Por favor cole o código com Ctrl+V na caixa de texto', 'error');
+        showModal(modalHtml);
       }
     });
   }
@@ -415,11 +469,64 @@ document.addEventListener('DOMContentLoaded', () => {
     renderConsultantsAccordion();
   });
 
+  // Client Search Bar Listener
+  if (inputClientSearch) {
+    inputClientSearch.addEventListener('input', (e) => {
+      clientSearchQuery = e.target.value;
+      if (btnClearClientSearch) {
+        if (clientSearchQuery && clientSearchQuery.trim()) {
+          btnClearClientSearch.classList.remove('hidden');
+        } else {
+          btnClearClientSearch.classList.add('hidden');
+        }
+      }
+      renderConsultantsAccordion();
+    });
+  }
+
+  if (btnClearClientSearch) {
+    btnClearClientSearch.addEventListener('click', () => {
+      clientSearchQuery = '';
+      if (inputClientSearch) {
+        inputClientSearch.value = '';
+        inputClientSearch.focus();
+      }
+      btnClearClientSearch.classList.add('hidden');
+      renderConsultantsAccordion();
+    });
+  }
+
   btnExportCsv.addEventListener('click', () => {
     if (currentClient) window.location.href = `/api/export/${currentClient.id}`;
   });
 
   // ── FORMATTER PARA PARTILHA DE IMÓVEIS (WhatsApp / Email) ───────────────
+  function isMultiplePeople(name = '') {
+    const clean = (name || '').trim();
+    return /\s+(?:e|&|\/|\+)\s+/i.test(clean) || /,\s*/.test(clean);
+  }
+
+  function formatIntroMessage(client, count = 1) {
+    const name = client ? client.name.trim() : 'Cliente';
+    const plural = isMultiplePeople(name);
+    if (count === 1) {
+      return plural
+        ? `Olá ${name}, selecionamos esta opção que vos pode interessar:\n\n`
+        : `Olá ${name}, selecionamos esta opção que lhe pode interessar:\n\n`;
+    }
+    return plural
+      ? `Olá ${name}, selecionamos estas ${count} opções que vos podem interessar:\n\n`
+      : `Olá ${name}, selecionamos estas ${count} opções que lhe podem interessar:\n\n`;
+  }
+
+  function formatOutroMessage(client) {
+    const name = client ? client.name.trim() : '';
+    const plural = isMultiplePeople(name);
+    return plural
+      ? `\n\nAgradecemos sempre o envio de algum feedback para nos irmos adaptado às vossas preferências! 😀`
+      : `\n\nAgradecemos sempre o envio de algum feedback para nos irmos adaptado às suas preferências! 😀`;
+  }
+
   function formatListingShareText(item, idx = null) {
     const title = item.title || 'Imóvel';
     const price = item.price || 'Sob Consulta';
@@ -428,33 +535,40 @@ document.addEventListener('DOMContentLoaded', () => {
     const area = item.area ? ` • 📐 ${item.area}` : '';
     const specs = (item.details || []).join(' • ');
     
+    // Regra de Mercado: se o preço/m² estiver acima da média de mercado, NUNCA incluir essa informação para o cliente
     let m2Text = '';
     if (item.m2_analysis && item.m2_analysis.badge_text) {
-      m2Text = `\n📊 Mercado: ${item.m2_analysis.badge_text}`;
-    }
-    
-    let dropText = '';
-    if (item.price_drop) {
-      dropText = `\n🔻 Oportunidade: Baixou ${item.price_drop}`;
+      const diffPct = typeof item.m2_analysis.diff_pct === 'number' ? item.m2_analysis.diff_pct : 0;
+      const isAbove = item.m2_analysis.status === 'above' || diffPct > 0 || /acima|⚠️/i.test(item.m2_analysis.badge_text);
+      if (!isAbove && diffPct < 0) {
+        m2Text = `\n📊 Mercado: ${item.m2_analysis.badge_text}`;
+      }
     }
 
     const header = idx !== null ? `🏡 *Opção ${idx + 1}: ${title}*` : `🏡 *${title}*`;
 
     return `${header}
 📍 *Zona:* ${loc}
-💰 *Preço:* ${price}${m2}${area}${specs ? `\n✨ *Caraterísticas:* ${specs}` : ''}${m2Text}${dropText}
+💰 *Preço:* ${price}${m2}${area}${specs ? `\n✨ *Caraterísticas:* ${specs}` : ''}${m2Text}
 🔗 *Link:* ${item.link}`;
+  }
+
+  function formatCompleteShareMessage(items, client = currentClient) {
+    const list = Array.isArray(items) ? items : [items];
+    if (list.length === 0) return '';
+    const intro = formatIntroMessage(client, list.length);
+    const body = list.map((it, i) => formatListingShareText(it, list.length > 1 ? i : null)).join('\n\n---\n\n');
+    const outro = formatOutroMessage(client);
+    return intro + body + outro;
   }
 
   // Selection Dock Actions
   btnCopySelection.addEventListener('click', () => {
     if (selectedListingIds.size === 0) return;
     const selectedItems = listings.filter(l => selectedListingIds.has(l.id));
-    const clientName = currentClient ? currentClient.name : 'Cliente';
-    const header = `Olá ${clientName}, selecionei estas ${selectedItems.length} opções que podem ser perfeitas para si:\n\n`;
-    const text = header + selectedItems.map((it, i) => formatListingShareText(it, i)).join('\n\n---\n\n');
+    const text = formatCompleteShareMessage(selectedItems, currentClient);
 
-    copyToClipboard(text, `${selectedItems.length} imóveis completos copiados com dados de €/m² e localização! 📋`);
+    copyToClipboard(text, `${selectedItems.length} opções copiadas prontas para envio! 📋`);
   });
 
   btnMarkSelectionSent.addEventListener('click', async () => {
@@ -557,14 +671,30 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    let totalRenderedClients = 0;
+
     consultants.forEach(cons => {
       let consClients = clients.filter(c => (c.consultant_id || 'consultant-geral') === cons.id);
       if (sidebarFilter === 'overdue') {
         consClients = consClients.filter(c => c.is_overdue);
       }
 
+      if (clientSearchQuery && clientSearchQuery.trim()) {
+        const q = clientSearchQuery.toLowerCase().trim();
+        consClients = consClients.filter(c => {
+          return (c.name || '').toLowerCase().includes(q) ||
+                 (c.location || '').toLowerCase().includes(q) ||
+                 (c.property_type || '').toLowerCase().includes(q) ||
+                 (c.notes || '').toLowerCase().includes(q) ||
+                 (c.operation || '').toLowerCase().includes(q) ||
+                 (c.priority || '').toLowerCase().includes(q);
+        });
+      }
+
+      totalRenderedClients += consClients.length;
+
       const overdueCount = consClients.filter(c => c.is_overdue).length;
-      const isCollapsed = collapsedConsultants.has(cons.id);
+      const isCollapsed = clientSearchQuery && clientSearchQuery.trim() ? false : collapsedConsultants.has(cons.id);
 
       const groupEl = document.createElement('div');
       groupEl.className = `consultant-group ${isCollapsed ? 'collapsed' : ''}`;
@@ -706,6 +836,14 @@ document.addEventListener('DOMContentLoaded', () => {
       groupEl.appendChild(listEl);
       consultantsAccordionEl.appendChild(groupEl);
     });
+
+    if (clientSearchQuery && clientSearchQuery.trim() && totalRenderedClients === 0) {
+      consultantsAccordionEl.innerHTML = `
+        <div style="padding:1.5rem 1rem; text-align:center; color:var(--cinza); font-size:0.85rem; line-height:1.5;">
+          <i class="fa-solid fa-user-xmark" style="font-size:1.8rem; opacity:0.5; margin-bottom:0.5rem; display:block;"></i>
+          Nenhum cliente encontrado para "<strong>${esc(clientSearchQuery)}</strong>"
+        </div>`;
+    }
   }
 
   async function reassignClientConsultant(clientId, consultantId) {
@@ -733,6 +871,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     currentClientNameEl.textContent = c.name;
     btnEditClientHeader.disabled = false;
+    if (btnClearListingsHeader) btnClearListingsHeader.disabled = false;
+    if (btnClearListings) btnClearListings.disabled = false;
     btnDeleteClientHeader.disabled = false;
     if (btnOpenIdealista) btnOpenIdealista.disabled = false;
 
@@ -801,6 +941,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return map[a] ? `<span class="badge">${map[a]}</span>` : '';
     }).join(' ');
 
+    const areaBadge = c.min_area ? `<span class="badge"><i class="fa-solid fa-ruler-combined"></i> Mín. ${c.min_area} m²</span>` : '';
+
     clientBadgesEl.innerHTML = `
       <span class="badge"><i class="fa-solid fa-user-tie"></i> ${esc(cons ? cons.name : 'Geral')}</span>
       <span class="badge badge-highlight"><i class="fa-solid fa-building"></i> ${esc(typeLabel)}</span>
@@ -808,6 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="badge"><i class="fa-solid fa-location-dot"></i> ${cap(c.location)}</span>
       <span class="badge"><i class="fa-solid fa-euro-sign"></i> ${priceStr}</span>
       <span class="badge"><i class="fa-solid fa-bed"></i> ${typos}</span>
+      ${areaBadge}
       ${amenitiesList}`;
 
     loadListings();
@@ -840,6 +983,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('client-location').value = clientToEdit.location || '';
       document.getElementById('client-min-price').value = clientToEdit.min_price || '';
       document.getElementById('client-max-price').value = clientToEdit.max_price || '';
+      document.getElementById('client-min-area').value = clientToEdit.min_area || '';
       document.getElementById('client-elevator-floor').value = clientToEdit.elevator_floor || '0';
       document.getElementById('client-notes').value = clientToEdit.notes || '';
       document.getElementById('client-custom-search-url').value = clientToEdit.custom_search_url || '';
@@ -860,6 +1004,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('client-id').value = '';
       document.getElementById('client-priority').value = 'U';
       document.getElementById('client-type').value = 'apartamentos';
+      document.getElementById('client-min-area').value = '';
       document.getElementById('client-elevator-floor').value = '0';
       document.getElementById('client-custom-search-url').value = '';
       ['t2', 't3'].forEach(v => {
@@ -885,6 +1030,7 @@ document.addEventListener('DOMContentLoaded', () => {
       location: document.getElementById('client-location').value.trim(),
       min_price: +document.getElementById('client-min-price').value || null,
       max_price: +document.getElementById('client-max-price').value || null,
+      min_area: +document.getElementById('client-min-area').value || null,
       typology: typologies,
       amenities: amenities,
       elevator_floor: document.getElementById('client-elevator-floor').value,
@@ -942,6 +1088,40 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Erro ao apagar cliente', 'error');
     }
   }
+
+  async function handleClearClientListings() {
+    if (!currentClient) {
+      showToast('Selecione um cliente primeiro!', 'error');
+      return;
+    }
+    if (!listings || !listings.length) {
+      showToast(`O cliente "${currentClient.name}" não tem imóveis guardados.`, 'info');
+      return;
+    }
+    if (!confirm(`Tem a certeza que deseja LIMPAR todos os ${listings.length} imóveis da procura de "${currentClient.name}"?\n\n(Apenas a lista de imóveis deste cliente será limpa. O cliente e os seus critérios serão mantidos).`)) {
+      return;
+    }
+
+    try {
+      showToast('A limpar imóveis... ⏳');
+      const res = await fetch(`/api/listings/clear/${currentClient.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`🧹 ${data.deletedCount || listings.length} imóveis limpos com sucesso!`);
+        selectedListingIds.clear();
+        updateSelectionDock();
+        await loadClients();
+        await loadListings();
+      } else {
+        showToast(data.error || 'Erro ao limpar imóveis', 'error');
+      }
+    } catch (err) {
+      showToast('Erro de comunicação com o servidor', 'error');
+    }
+  }
+
+  if (btnClearListingsHeader) btnClearListingsHeader.addEventListener('click', handleClearClientListings);
+  if (btnClearListings) btnClearListings.addEventListener('click', handleClearClientListings);
 
   // ── CONSULTANT MODAL ─────────────────────────────────────────────────────
   async function handleSaveConsultant(e) {
@@ -1028,10 +1208,14 @@ document.addEventListener('DOMContentLoaded', () => {
         m2BadgeTop3 = `<div style="background:${bg};color:${textCol};font-size:0.75rem;font-weight:700;padding:3px 6px;border-radius:4px;margin-bottom:0.4rem;">${esc(item.m2_analysis.badge_text || item.m2_analysis.short_badge)}</div>`;
       }
 
+      const portalSource = item.source || (item.link && item.link.includes('remax') ? 'remax' : (item.link && item.link.includes('zome') ? 'zome' : (item.link && item.link.includes('arys') ? 'arys' : 'idealista')));
+      const sourceBadgeHtml = `<span class="badge-source source-${portalSource}" style="position:absolute;bottom:8px;left:8px;">${portalSource.toUpperCase()}</span>`;
+
       card.innerHTML = `
         <div style="position:relative;margin-bottom:0.75rem;">
           ${photo ? `<img src="${photo}" alt="${esc(item.title)}" style="width:100%;height:130px;object-fit:cover;border-radius:6px;" onerror="this.remove()">` : ''}
           <div class="top3-rank-badge" style="position:absolute;top:8px;left:8px;margin:0;">#${idx + 1} Recomendado</div>
+          ${sourceBadgeHtml}
           <div style="position:absolute;top:8px;right:8px;background:${item.match_color || '#C75233'};color:#fff;font-weight:700;font-size:0.78rem;padding:3px 8px;border-radius:20px;box-shadow:0 2px 6px rgba(0,0,0,0.25);">
             🔥 ${score}% Match
           </div>
@@ -1044,13 +1228,18 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="top3-card-actions">
           <button class="btn-copy-link" data-link="${item.link}"><i class="fa-solid fa-copy"></i> Copiar Link</button>
           <button class="btn-mark-sent" data-id="${item.id}"><i class="fa-solid fa-envelope-circle-check"></i> Já Enviado</button>
+          <button class="btn-schedule-visit" data-id="${item.id}" title="Marcar Visita no Google Calendar" style="background:#fff;border:1px solid #d8d1c9;color:var(--castanho);padding:0.4rem 0.6rem;border-radius:6px;cursor:pointer;"><i class="fa-solid fa-calendar-plus" style="color:var(--terracota);"></i> Visita</button>
           <a href="${item.link}" target="_blank" class="btn-open-link" title="Abrir no Idealista"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
           <button class="btn-delete-listing" data-id="${item.id}" title="Remover anúncio repetido ou descartar" style="background:#fff;border:1px solid #e2e8f0;color:#e53e3e;padding:0.4rem 0.6rem;border-radius:6px;cursor:pointer;"><i class="fa-solid fa-trash-can"></i></button>
         </div>`;
 
       card.querySelector('.btn-copy-link').addEventListener('click', () => {
-        const shareText = formatListingShareText(item, idx);
-        copyToClipboard(shareText, `Imóvel #${idx + 1} copiado com dados completos (m², preço/m², zona)! 📋`);
+        const shareText = formatCompleteShareMessage(item, currentClient);
+        copyToClipboard(shareText, `Imóvel #${idx + 1} copiado com mensagem completa para o cliente! 📋`);
+      });
+
+      card.querySelector('.btn-schedule-visit').addEventListener('click', () => {
+        openVisitModalForListing(item);
       });
 
       card.querySelector('.btn-mark-sent').addEventListener('click', async () => {
@@ -1070,11 +1259,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnCopyTop3.onclick = () => {
-      const clientName = currentClient ? currentClient.name : 'Cliente';
-      const header = `Olá ${clientName}, selecionei o TOP 3 de melhores oportunidades para si:\n\n`;
-      const text = header + top3.map((it, i) => formatListingShareText(it, i)).join('\n\n---\n\n');
-
-      copyToClipboard(text, 'Top 3 copiado com dados completos de m², preço/m² e localização! 📋');
+      if (!top3 || !top3.length) return;
+      const text = formatCompleteShareMessage(top3, currentClient);
+      copyToClipboard(text, 'Top 3 copiado pronto para envio! 📋');
     };
 
     btnMarkTop3Sent.onclick = async () => {
@@ -1162,10 +1349,31 @@ document.addEventListener('DOMContentLoaded', () => {
         m2BadgeHtml = `<div style="background:${bg};color:${textCol};font-size:0.78rem;font-weight:700;padding:4px 8px;border-radius:6px;margin-bottom:0.4rem;display:flex;align-items:center;gap:4px;">${esc(item.m2_analysis.badge_text)}</div>`;
       }
 
+      const sourcesList = (item.sources && item.sources.length) ? item.sources : [item.source || (item.link && item.link.includes('remax') ? 'remax' : (item.link && item.link.includes('zome') ? 'zome' : (item.link && item.link.includes('arys') ? 'arys' : 'idealista')))];
+      const sourceBadgesHtml = sourcesList.map(src => `<span class="badge-source source-${src}">${src.toUpperCase()}</span>`).join('');
+
+      const portalLinks = item.portal_links || { [item.source || 'idealista']: item.link };
+      const portalEntries = Object.entries(portalLinks).filter(([_, u]) => u && u.startsWith('http'));
+      let portalLinksCardHtml = '';
+      if (portalEntries.length > 1) {
+        portalLinksCardHtml = portalEntries.map(([src, u]) => `
+          <a href="${u}" target="_blank" class="btn-portal btn-portal-${src}" style="padding:4px 8px;font-size:0.75rem;border:1px solid #ddd;" title="Abrir no portal ${src.toUpperCase()}">
+            <span class="portal-dot ${src}-dot"></span> ${src.toUpperCase()}
+          </a>
+        `).join('');
+      } else {
+        const singleUrl = portalEntries[0] ? portalEntries[0][1] : item.link;
+        const singleSrc = portalEntries[0] ? portalEntries[0][0] : (item.source || 'idealista');
+        portalLinksCardHtml = `<a href="${singleUrl}" target="_blank" class="btn-open-link" title="Abrir no ${singleSrc.toUpperCase()}"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>`;
+      }
+
       card.innerHTML = `
         <div class="card-image-container">
           ${photo ? `<img src="${photo}" alt="${esc(item.title)}" onerror="this.parentElement.style.background='#EDE3D8';this.remove()">` : ''}
-          <span class="badge-status status-${status}">${statusLabel}</span>
+          <div class="card-badges-top-left">
+            ${sourceBadgesHtml}
+            <span class="badge-status status-${status}">${statusLabel}</span>
+          </div>
           <span style="position:absolute;bottom:8px;left:8px;background:${item.match_color || '#C75233'};color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:12px;box-shadow:0 2px 4px rgba(0,0,0,0.3);">
             🔥 ${score}% Match
           </span>
@@ -1198,11 +1406,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i class="fa-solid fa-envelope-circle-check"></i> ${status === 'enviado' ? 'Já Enviado (Remover)' : 'Marcar Enviado'}
               </button>
             </div>
-            <div class="action-buttons-row">
+            <div class="action-buttons-row" style="flex-wrap:wrap;align-items:center;">
               <button class="btn-view-detail"><i class="fa-solid fa-eye"></i> Ver Anúncio</button>
-              <a href="${item.link}" target="_blank" class="btn-open-link" title="Abrir no Idealista">
-                <i class="fa-solid fa-arrow-up-right-from-square"></i>
-              </a>
+              <button class="btn-schedule-visit" data-id="${item.id}" title="Marcar Visita no Google Calendar" style="background:#fff;border:1px solid #d8d1c9;color:var(--castanho);padding:0.45rem 0.7rem;border-radius:6px;cursor:pointer;"><i class="fa-solid fa-calendar-plus" style="color:var(--terracota);"></i> Visita</button>
+              ${portalLinksCardHtml}
               <button class="btn-delete-listing" data-id="${item.id}" title="Apagar este anúncio" style="background:#fff;border:1px solid #e2e8f0;color:#e53e3e;padding:0.45rem 0.7rem;border-radius:6px;cursor:pointer;"><i class="fa-solid fa-trash-can"></i></button>
               <select class="dropdown-status" data-id="${item.id}">
                 <option value="novo"      ${status === 'novo'      ? 'selected' : ''}>Novo</option>
@@ -1242,9 +1449,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 1-Click Copy Link Rico (WhatsApp / Email)
       card.querySelector('.btn-copy-link').addEventListener('click', () => {
-        const shareText = formatListingShareText(item);
-        copyToClipboard(shareText, 'Imóvel copiado com m², preço/m², zona e comparativo! 📋');
+        const shareText = formatCompleteShareMessage(item, currentClient);
+        copyToClipboard(shareText, 'Imóvel copiado com mensagem completa para o cliente! 📋');
       });
+
+      // Schedule Visit in Google Calendar
+      const visitBtn = card.querySelector('.btn-schedule-visit');
+      if (visitBtn) {
+        visitBtn.addEventListener('click', () => {
+          openVisitModalForListing(item);
+        });
+      }
 
       // Toggle Sent Status (allow easily removing the sent tag!)
       card.querySelector('.btn-mark-sent').addEventListener('click', async () => {
@@ -1306,8 +1521,8 @@ document.addEventListener('DOMContentLoaded', () => {
     modalDetailDescription.textContent = item.description || 'Abra o anúncio no Idealista para ler o texto completo e todos os detalhes do proprietário / agência.';
 
     modalCopyLinkBtn.onclick = () => {
-      const shareText = formatListingShareText(item);
-      copyToClipboard(shareText, 'Dados do imóvel copiados para partilha! 📋');
+      const shareText = formatCompleteShareMessage(item, currentClient);
+      copyToClipboard(shareText, 'Imóvel copiado com mensagem completa para o cliente! 📋');
     };
 
     modalToggleSentBtn.textContent = item.status === 'enviado' ? 'Remover "Já Enviado"' : 'Marcar como Já Enviado';
@@ -1322,7 +1537,27 @@ document.addEventListener('DOMContentLoaded', () => {
       await loadClients();
     };
 
-    modalOpenIdealistaLink.href = item.link;
+    const portalLinks = item.portal_links || { [item.source || 'idealista']: item.link };
+    const portalContainer = document.getElementById('modal-portal-links-container');
+    if (portalContainer) {
+      portalContainer.innerHTML = '';
+      const portalEntries = Object.entries(portalLinks).filter(([_, u]) => u && u.startsWith('http'));
+      portalEntries.forEach(([src, u]) => {
+        const a = document.createElement('a');
+        a.href = u;
+        a.target = '_blank';
+        a.className = `btn btn-portal btn-portal-${src}`;
+        a.style.border = '1px solid #ccc';
+        a.style.padding = '8px 14px';
+        a.innerHTML = `<span class="portal-dot ${src}-dot"></span> Ver no ${src.toUpperCase()}`;
+        portalContainer.appendChild(a);
+      });
+      modalOpenIdealistaLink.style.display = 'none';
+    } else {
+      modalOpenIdealistaLink.href = item.link;
+      modalOpenIdealistaLink.style.display = 'inline-flex';
+    }
+
     showModal(modalDetail);
   }
 
@@ -1513,17 +1748,37 @@ document.addEventListener('DOMContentLoaded', () => {
     renderListings();
   }
 
-  function copyToClipboard(text, successMsg) {
+  async function copyToClipboard(text, successMsg) {
+    let copied = false;
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(() => showToast(successMsg));
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch (err) {
+        console.warn('navigator.clipboard.writeText falhou:', err);
+      }
+    }
+    if (!copied) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        copied = document.execCommand('copy');
+        document.body.removeChild(ta);
+      } catch (err) {
+        console.error('Fallback execCommand falhou:', err);
+      }
+    }
+    if (copied) {
+      showToast(successMsg || 'Copiado para a área de transferência! 📋');
     } else {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      showToast(successMsg);
+      showToast('Não foi possível copiar automaticamente.', 'error');
     }
   }
 
@@ -1821,4 +2076,454 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!num || isNaN(num)) return '0€';
     return Number(num).toLocaleString('pt-PT') + ' €';
   }
+
+  // ── MARCADOR DE VISITAS & GOOGLE CALENDAR ────────────────────────────────
+  let currentVisitsFilter = 'all';
+
+  async function loadVisits() {
+    try {
+      const res = await fetch('/api/visits');
+      visits = await res.json();
+      updateVisitsBadge();
+      renderVisitsCards(currentVisitsFilter);
+    } catch (err) {
+      console.warn('Aviso ao carregar visitas:', err);
+    }
+  }
+
+  function updateVisitsBadge() {
+    if (!badgeVisitsCount || !visitsTabCount) return;
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    const upcoming = visits.filter(v => v.status !== 'cancelada' && v.status !== 'realizada');
+    const todayVisits = upcoming.filter(v => (v.date || '').startsWith(todayStr));
+
+    visitsTabCount.textContent = upcoming.length;
+
+    if (upcoming.length > 0) {
+      badgeVisitsCount.textContent = upcoming.length;
+      badgeVisitsCount.classList.remove('hidden');
+      if (todayVisits.length > 0) {
+        badgeVisitsCount.classList.add('has-today');
+        badgeVisitsCount.title = `Hoje: ${todayVisits.length} visita(s) agendada(s)!`;
+      } else {
+        badgeVisitsCount.classList.remove('has-today');
+        badgeVisitsCount.title = `${upcoming.length} visita(s) agendada(s)`;
+      }
+    } else {
+      badgeVisitsCount.classList.add('hidden');
+      badgeVisitsCount.classList.remove('has-today');
+    }
+  }
+
+  function populateVisitsSelects() {
+    // Populate Clients
+    if (visitClientSelect) {
+      const currentSelected = visitClientSelect.value;
+      visitClientSelect.innerHTML = '<option value="">-- Selecione o Cliente --</option>';
+      clients.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.name} (${c.location || 'Sem zona'})`;
+        visitClientSelect.appendChild(opt);
+      });
+      if (currentClient) {
+        visitClientSelect.value = currentClient.id;
+      } else if (currentSelected) {
+        visitClientSelect.value = currentSelected;
+      }
+    }
+
+    // Populate Consultants
+    if (visitConsultantSelect) {
+      const currentSelected = visitConsultantSelect.value;
+      visitConsultantSelect.innerHTML = '<option value="">-- Selecione o Consultor --</option>';
+      consultants.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        visitConsultantSelect.appendChild(opt);
+      });
+      if (currentClient && currentClient.consultant_id) {
+        visitConsultantSelect.value = currentClient.consultant_id;
+      } else if (currentSelected) {
+        visitConsultantSelect.value = currentSelected;
+      }
+    }
+  }
+
+  function showVisitsModal(prefill = {}) {
+    populateVisitsSelects();
+
+    // Default Date & Time: Today or prefilled
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    if (visitDate) visitDate.value = prefill.date || todayStr;
+
+    // Time: next nearest hour
+    let nextHour = now.getHours() + 1;
+    if (nextHour > 23) nextHour = 10;
+    const defaultTime = `${String(nextHour).padStart(2, '0')}:00`;
+    if (visitTime) visitTime.value = prefill.time || defaultTime;
+
+    if (visitDuration) visitDuration.value = prefill.duration || '60';
+
+    if (prefill.client) {
+      if (visitClientSelect) visitClientSelect.value = prefill.client.id;
+      if (visitConsultantSelect && prefill.client.consultant_id) {
+        visitConsultantSelect.value = prefill.client.consultant_id;
+      }
+    }
+
+    if (prefill.listing) {
+      const l = prefill.listing;
+      if (visitListingTitle) visitListingTitle.value = l.title || 'Imóvel para Visita';
+      if (visitLocation) visitLocation.value = l.location || (prefill.client ? prefill.client.location : '');
+      if (visitPrice) visitPrice.value = l.price || (l.price_num ? l.price_num.toLocaleString('pt-PT') + ' €' : '');
+      if (visitLink) visitLink.value = l.link || '';
+    } else if (prefill.title) {
+      if (visitListingTitle) visitListingTitle.value = prefill.title;
+      if (visitLocation) visitLocation.value = prefill.location || '';
+      if (visitPrice) visitPrice.value = prefill.price || '';
+      if (visitLink) visitLink.value = prefill.link || '';
+    }
+
+    // Switch to new visit tab
+    switchVisitsTab('new');
+
+    if (modalVisits) modalVisits.classList.remove('hidden');
+  }
+
+  function openVisitModalForListing(listing) {
+    showVisitsModal({
+      client: currentClient,
+      listing: listing
+    });
+  }
+
+  function switchVisitsTab(tab) {
+    if (tab === 'new') {
+      tabBtnNewVisit.classList.add('active');
+      tabBtnListVisits.classList.remove('active');
+      tabPaneNewVisit.classList.remove('hidden');
+      tabPaneListVisits.classList.add('hidden');
+    } else {
+      tabBtnNewVisit.classList.remove('active');
+      tabBtnListVisits.classList.add('active');
+      tabPaneNewVisit.classList.add('hidden');
+      tabPaneListVisits.classList.remove('hidden');
+      renderVisitsCards(currentVisitsFilter);
+    }
+  }
+
+  if (tabBtnNewVisit) tabBtnNewVisit.addEventListener('click', () => switchVisitsTab('new'));
+  if (tabBtnListVisits) tabBtnListVisits.addEventListener('click', () => switchVisitsTab('list'));
+  if (btnOpenVisits) btnOpenVisits.addEventListener('click', () => showVisitsModal());
+  if (btnRefreshVisits) btnRefreshVisits.addEventListener('click', loadVisits);
+
+  const btnCloseVisitsModal = document.getElementById('btn-close-visits-modal');
+  if (btnCloseVisitsModal) {
+    btnCloseVisitsModal.addEventListener('click', () => {
+      if (modalVisits) modalVisits.classList.add('hidden');
+    });
+  }
+
+  // Google Maps helper
+  if (btnVisitOpenMap) {
+    btnVisitOpenMap.addEventListener('click', () => {
+      const loc = (visitLocation ? visitLocation.value : '').trim();
+      if (!loc) {
+        showToast('Introduza primeiro uma localização ou morada', 'error');
+        return;
+      }
+      const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
+      window.open(mapUrl, '_blank');
+    });
+  }
+
+  // Build Google Calendar Event Creation URL
+  function buildGoogleCalendarUrl(visitData) {
+    const clientName = visitData.client_name || 'Cliente';
+    const title = `🏡 Visita: ${clientName} — ${visitData.title || 'Imóvel'}`;
+    const location = visitData.location || '';
+
+    // Calculate dates in YYYYMMDDTHHmmSSZ format (or local YYYYMMDDTHHmmSS)
+    const datePart = (visitData.date || '').replace(/-/g, '');
+    const timePart = (visitData.time || '10:00').replace(/:/g, '') + '00';
+    const startStr = `${datePart}T${timePart}`;
+
+    const durationMin = parseInt(visitData.duration || 60, 10);
+    const startObj = new Date(`${visitData.date}T${visitData.time || '10:00'}:00`);
+    const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
+
+    const endDatePart = `${endObj.getFullYear()}${String(endObj.getMonth() + 1).padStart(2, '0')}${String(endObj.getDate()).padStart(2, '0')}`;
+    const endTimePart = `${String(endObj.getHours()).padStart(2, '0')}${String(endObj.getMinutes()).padStart(2, '0')}00`;
+    const endStr = `${endDatePart}T${endTimePart}`;
+
+    let details = `SURE. REAL ESTATE — MARCAÇÃO DE VISITA\n`;
+    details += `──────────────────────────────────────────────\n`;
+    details += `👤 Cliente: ${clientName}\n`;
+    if (visitData.client_phone) details += `📞 Contacto Cliente: ${visitData.client_phone}\n`;
+    if (visitData.consultant_name) details += `💼 Consultor Responsável: ${visitData.consultant_name}\n`;
+    if (visitData.price) details += `💶 Preço: ${visitData.price}\n`;
+    if (visitData.link) details += `🔗 Link do Imóvel: ${visitData.link}\n`;
+    if (visitData.contact) details += `🏢 Contacto Agência/Proprietário: ${visitData.contact}\n`;
+    if (visitData.notes) details += `📝 Notas / Código / Acesso: ${visitData.notes}\n`;
+    details += `──────────────────────────────────────────────\n`;
+    details += `Agendado via SURE. IdealistaFarm`;
+
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startStr}/${endStr}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(location)}`;
+  }
+
+  // Get data from form
+  function getVisitFormData() {
+    const selectedClientId = visitClientSelect ? visitClientSelect.value : '';
+    const selectedClient = clients.find(c => c.id === selectedClientId);
+    const selectedConsId = visitConsultantSelect ? visitConsultantSelect.value : '';
+    const selectedCons = consultants.find(c => c.id === selectedConsId);
+
+    const title = visitListingTitle ? visitListingTitle.value.trim() : '';
+    const date = visitDate ? visitDate.value : '';
+    const time = visitTime ? visitTime.value : '15:00';
+    const duration = visitDuration ? visitDuration.value : '60';
+    const location = visitLocation ? visitLocation.value.trim() : '';
+    const price = visitPrice ? visitPrice.value.trim() : '';
+    const contact = visitContact ? visitContact.value.trim() : '';
+    const link = visitLink ? visitLink.value.trim() : '';
+    const notes = visitNotes ? visitNotes.value.trim() : '';
+
+    const startObj = new Date(`${date}T${time}:00`);
+    const durationMin = parseInt(duration, 10);
+    const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
+
+    return {
+      client_id: selectedClientId,
+      client_name: selectedClient ? selectedClient.name : 'Sem cliente específico',
+      client_phone: selectedClient ? (selectedClient.phone || '') : '',
+      consultant_id: selectedConsId,
+      consultant_name: selectedCons ? selectedCons.name : 'Equipa SURE',
+      title: title || `Visita Imóvel - ${location || 'Portugal'}`,
+      date: date,
+      time: time,
+      duration: duration,
+      start_time: startObj.toISOString(),
+      end_time: endObj.toISOString(),
+      location: location,
+      price: price,
+      contact: contact,
+      link: link,
+      notes: notes,
+      status: 'agendada'
+    };
+  }
+
+  // Form Submit Handler (Save to backend & Google Calendar sync)
+  if (formVisit) {
+    formVisit.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const visitData = getVisitFormData();
+
+      if (!visitData.date || !visitData.time) {
+        showToast('Indique a data e hora da visita', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/visits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(visitData)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✅ Visita agendada com sucesso na Agenda SURE!', 'success');
+          await loadVisits();
+          switchVisitsTab('list');
+          formVisit.reset();
+        } else {
+          showToast('Erro ao guardar visita: ' + (data.error || ''), 'error');
+        }
+      } catch (err) {
+        showToast('Falha na comunicação com o servidor', 'error');
+      }
+    });
+  }
+
+  // Direct 1-Click Add to Google Calendar Button
+  if (btnAddGCalendarDirect) {
+    btnAddGCalendarDirect.addEventListener('click', async () => {
+      const visitData = getVisitFormData();
+
+      if (!visitData.date || !visitData.time) {
+        showToast('Preencha a data e hora antes de abrir no Google Calendar', 'error');
+        return;
+      }
+
+      // 1. Open Google Calendar in new tab immediately
+      const calUrl = buildGoogleCalendarUrl(visitData);
+      window.open(calUrl, '_blank');
+
+      // 2. Save locally and in Webhook
+      try {
+        const res = await fetch('/api/visits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(visitData)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('📅 Abertura no Google Calendar + Gravado na Agenda SURE!', 'success');
+          await loadVisits();
+          switchVisitsTab('list');
+          formVisit.reset();
+        }
+      } catch (e) {
+        console.warn('Erro ao guardar em segundo plano:', e);
+      }
+    });
+  }
+
+  // Render Visits Cards in the List Tab
+  function renderVisitsCards(filter = 'all') {
+    if (!visitsCardsContainer) return;
+    visitsCardsContainer.innerHTML = '';
+
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    let filtered = [...visits];
+
+    if (filter === 'today') {
+      filtered = filtered.filter(v => (v.date || '').startsWith(todayStr));
+    } else if (filter === 'upcoming') {
+      filtered = filtered.filter(v => v.status === 'agendada');
+    } else if (filter === 'done') {
+      filtered = filtered.filter(v => v.status === 'realizada');
+    }
+
+    if (filtered.length === 0) {
+      visitsCardsContainer.innerHTML = `
+        <div style="text-align:center; padding:2.5rem 1rem; color:var(--cinza);">
+          <i class="fa-solid fa-calendar-xmark" style="font-size:2.4rem; opacity:0.4; margin-bottom:0.8rem; display:block;"></i>
+          <p style="font-size:0.92rem; margin:0;">Nenhuma visita agendada nesta categoria.</p>
+          <button type="button" class="btn btn-primary btn-sm" style="margin-top:1rem;" onclick="document.getElementById('tab-btn-new-visit').click()">
+            <i class="fa-solid fa-plus"></i> Agendar Agora
+          </button>
+        </div>`;
+      return;
+    }
+
+    filtered.forEach(visit => {
+      const card = document.createElement('div');
+      card.className = `visit-card status-${visit.status || 'agendada'}`;
+
+      const isToday = (visit.date || '').startsWith(todayStr);
+      const dateFormatted = visit.date ? new Date(visit.date + 'T12:00:00').toLocaleDateString('pt-PT', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }) : 'Data a definir';
+      const timeFormatted = visit.time || '--:--';
+      const durationFormatted = visit.duration ? `${visit.duration} min` : '1 hora';
+
+      const gcalUrl = buildGoogleCalendarUrl(visit);
+      const mapsUrl = visit.location ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(visit.location)}` : null;
+
+      card.innerHTML = `
+        <div class="visit-card-header">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="visit-time-badge ${isToday ? 'is-today' : ''}">
+              <i class="fa-regular fa-clock"></i> ${timeFormatted} (${durationFormatted})
+            </span>
+            <span style="font-size:0.85rem; font-weight:700; color:var(--castanho);">
+              📅 ${dateFormatted} ${isToday ? '<strong style="color:var(--terracota); margin-left:4px;">(HOJE)</strong>' : ''}
+            </span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="badge" style="font-size:0.72rem; padding:2px 8px; background:#f0ebe4;">
+              <i class="fa-solid fa-user-tie"></i> ${esc(visit.consultant_name || 'Consultor')}
+            </span>
+          </div>
+        </div>
+
+        <div class="visit-card-title">${esc(visit.title)}</div>
+
+        <div class="visit-card-details">
+          <span><i class="fa-solid fa-user" style="color:var(--terracota);"></i> <strong>${esc(visit.client_name)}</strong></span>
+          ${visit.location ? `<span><i class="fa-solid fa-location-dot" style="color:#2b6cb0;"></i> ${esc(visit.location)}</span>` : ''}
+          ${visit.price ? `<span><i class="fa-solid fa-tag" style="color:#2f855a;"></i> ${esc(visit.price)}</span>` : ''}
+          ${visit.contact ? `<span><i class="fa-solid fa-phone" style="color:#d69e2e;"></i> ${esc(visit.contact)}</span>` : ''}
+        </div>
+
+        ${visit.notes ? `<div style="background:#faf8f5; border-left:3px solid #d8d1c9; padding:6px 10px; font-size:0.8rem; color:#666; border-radius:4px;">${esc(visit.notes)}</div>` : ''}
+
+        <div class="visit-card-actions">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <a href="${gcalUrl}" target="_blank" class="btn btn-gcalendar btn-sm" style="background:#4285F4; color:#fff; font-size:0.75rem; padding:4px 8px;" title="Abrir / Adicionar no Google Calendar">
+              <i class="fa-brands fa-google"></i> Google Calendar
+            </a>
+            ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:4px 8px;" title="Ver localização no Google Maps"><i class="fa-solid fa-map-location-dot"></i> Maps</a>` : ''}
+            ${visit.link ? `<a href="${visit.link}" target="_blank" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:4px 8px;" title="Ver Imóvel no Portal"><i class="fa-solid fa-arrow-up-right-from-square"></i> Imóvel</a>` : ''}
+          </div>
+
+          <div style="display:flex; align-items:center; gap:6px;">
+            <select class="dropdown-visit-status form-control" data-id="${visit.id}" style="font-size:0.75rem; padding:3px 6px; border-radius:4px; border:1px solid #d8d1c9;">
+              <option value="agendada"  ${visit.status === 'agendada'  ? 'selected' : ''}>⏳ Agendada</option>
+              <option value="realizada" ${visit.status === 'realizada' ? 'selected' : ''}>✅ Realizada</option>
+              <option value="cancelada" ${visit.status === 'cancelada' ? 'selected' : ''}>❌ Cancelada</option>
+            </select>
+            <button type="button" class="btn-del-visit btn btn-secondary btn-sm" data-id="${visit.id}" title="Eliminar visita" style="color:var(--danger); padding:3px 6px;">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Status selector change
+      const statusSelect = card.querySelector('.dropdown-visit-status');
+      if (statusSelect) {
+        statusSelect.addEventListener('change', async (e) => {
+          const newStatus = e.target.value;
+          try {
+            await fetch(`/api/visits/${visit.id}/status`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ status: newStatus })
+            });
+            showToast(`Estado da visita atualizado para: ${newStatus.toUpperCase()}`);
+            await loadVisits();
+          } catch (err) {
+            showToast('Erro ao atualizar estado da visita', 'error');
+          }
+        });
+      }
+
+      // Delete button
+      const delBtn = card.querySelector('.btn-del-visit');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          if (!confirm(`Tem a certeza que deseja eliminar a visita com ${visit.client_name}?`)) return;
+          try {
+            await fetch(`/api/visits/${visit.id}`, { method: 'DELETE' });
+            showToast('Visita eliminada da agenda');
+            await loadVisits();
+          } catch (err) {
+            showToast('Erro ao eliminar visita', 'error');
+          }
+        });
+      }
+
+      visitsCardsContainer.appendChild(card);
+    });
+  }
+
+  // Filter Buttons in List Tab
+  document.querySelectorAll('.btn-filter-visit').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.btn-filter-visit').forEach(b => b.classList.remove('active'));
+      e.currentTarget.classList.add('active');
+      currentVisitsFilter = e.currentTarget.dataset.filter || 'all';
+      renderVisitsCards(currentVisitsFilter);
+    });
+  });
+
+  // Load visits on application startup
+  loadVisits();
 });

@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=3.1">
 </head>
 <body>
 <div class="app-layout">
@@ -39,6 +39,13 @@
       <button id="filter-overdue-clients" class="sidebar-tab-btn tab-overdue" title="Ver apenas clientes com prazos em atraso">
         <i class="fa-solid fa-triangle-exclamation"></i> Atrasados (<span id="sidebar-count-overdue">0</span>)
       </button>
+    </div>
+
+    <!-- Client Search Bar -->
+    <div class="sidebar-search-box">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" id="input-client-search" placeholder="Pesquisar cliente, zona, notas..." autocomplete="off">
+      <button id="btn-clear-client-search" class="btn-clear-search hidden" title="Limpar pesquisa">&times;</button>
     </div>
 
     <!-- Consultants & Clients Accordion list -->
@@ -88,6 +95,9 @@
           <button id="btn-edit-client-header" class="btn btn-secondary btn-sm" title="Editar critérios deste cliente" disabled>
             <i class="fa-solid fa-pen"></i> Editar Procura
           </button>
+          <button id="btn-clear-listings-header" class="btn btn-secondary btn-sm btn-danger-hover" title="Limpar todos os imóveis desta procura" disabled>
+            <i class="fa-solid fa-broom"></i> Limpar Imóveis
+          </button>
           <button id="btn-delete-client-header" class="btn btn-secondary btn-sm btn-danger-hover" title="Eliminar este cliente" disabled>
             <i class="fa-solid fa-trash-can"></i> Apagar
           </button>
@@ -99,8 +109,31 @@
         <button id="btn-open-chat" class="btn btn-secondary" style="background:#5B7FA6;color:#fff;border-color:#5B7FA6;" title="Adicionar ou atualizar cliente por texto livre com IA">
           <i class="fa-solid fa-wand-magic-sparkles"></i> Assistente IA
         </button>
-        <button id="btn-open-idealista" class="btn btn-secondary" title="Abrir a pesquisa deste cliente diretamente no Idealista">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i> Idealista
+        <div class="portal-buttons-group" title="Abrir pesquisa filtrada no portal pretendido">
+          <button id="btn-open-idealista" class="btn-portal btn-portal-idealista" title="Abrir no Idealista">
+            <span class="portal-dot idealista-dot"></span> Idealista
+          </button>
+          <button id="btn-open-remax" class="btn-portal btn-portal-remax" title="Abrir na RE/MAX Portugal">
+            <span class="portal-dot remax-dot"></span> RE/MAX
+          </button>
+          <button id="btn-open-zome" class="btn-portal btn-portal-zome" title="Abrir na Zome Real Estate">
+            <span class="portal-dot zome-dot"></span> Zome
+          </button>
+          <button id="btn-open-arys" class="btn-portal btn-portal-arys" title="Abrir na Arys Imobiliária">
+            <span class="portal-dot arys-dot"></span> Arys
+          </button>
+        </div>
+        <button id="btn-paste-clipboard" class="btn btn-primary" style="background:#2a7a2a; border-color:#2a7a2a;" title="Colar e extrair automaticamente imóveis copiados de qualquer portal (1-Clique)">
+          <i class="fa-solid fa-paste"></i> Colar Página
+        </button>
+        <button id="btn-show-bookmarklet" class="btn btn-secondary" title="Configurar Marcador de 1-Clique Universal (Idealista, RE/MAX, Zome, Arys)">
+          <i class="fa-solid fa-bookmark"></i> Marcador
+        </button>
+        <button id="btn-import-html" class="btn btn-secondary" title="Colar código-fonte HTML manualmente">
+          <i class="fa-solid fa-code"></i> Código-Fonte
+        </button>
+        <button id="btn-scrape-now" class="btn btn-secondary" title="Executar Bot Automático de Pesquisa">
+          <i class="fa-solid fa-robot"></i> Bot
         </button>
         <button id="btn-drive-folder" class="btn btn-secondary" title="Verificar ou criar pasta do cliente no Google Drive">
           <i class="fa-solid fa-folder"></i> <span id="label-drive-folder">Criar Pasta</span>
@@ -110,6 +143,10 @@
         </button>
         <button id="btn-drive-open" class="btn btn-secondary" title="Abrir a pasta deste cliente no Google Drive">
           <i class="fa-brands fa-google-drive"></i> Consultar na Drive
+        </button>
+        <button id="btn-open-visits" class="btn btn-primary btn-visits-top" title="Marcador de Visitas integrado com Google Calendar">
+          <i class="fa-solid fa-calendar-days"></i> Marcador de Visitas
+          <span id="badge-visits-count" class="badge-visits-counter hidden">0</span>
         </button>
       </div>
     </header>
@@ -167,6 +204,9 @@
         </button>
         <button id="btn-export-csv" class="btn btn-secondary btn-sm" title="Exportar tabela para Excel/CSV">
           <i class="fa-solid fa-file-csv"></i> Exportar CSV
+        </button>
+        <button id="btn-clear-listings" class="btn btn-secondary btn-sm btn-danger-hover" title="Limpar todos os imóveis da procura deste cliente">
+          <i class="fa-solid fa-broom"></i> Limpar Imóveis
         </button>
       </div>
     </div>
@@ -249,13 +289,14 @@
         <!-- Action buttons inside modal -->
         <div class="modal-detail-actions">
           <button id="modal-copy-link-btn" class="btn btn-primary">
-            <i class="fa-solid fa-copy"></i> Copiar Link Oficial
+            <i class="fa-solid fa-copy"></i> Copiar Mensagem Completa
           </button>
           <button id="modal-toggle-sent-btn" class="btn btn-secondary">
             <i class="fa-solid fa-envelope-circle-check"></i> Marcar como Já Enviado
           </button>
-          <a id="modal-open-idealista-link" href="#" target="_blank" class="btn btn-secondary">
-            <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir no Idealista
+          <div id="modal-portal-links-container" style="display:inline-flex;gap:6px;flex-wrap:wrap;"></div>
+          <a id="modal-open-idealista-link" href="#" target="_blank" class="btn btn-secondary" style="display:none;">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i> Abrir Anúncio
           </a>
         </div>
       </div>
@@ -333,6 +374,10 @@
         <div class="form-group">
           <label for="client-max-price">Preço Máximo (€)</label>
           <input type="number" id="client-max-price" placeholder="Ex: 350000">
+        </div>
+        <div class="form-group">
+          <label for="client-min-area">Área Mínima (m²)</label>
+          <input type="number" id="client-min-area" placeholder="Ex: 80" min="0">
         </div>
       </div>
 
@@ -504,7 +549,7 @@
         <div style="display:flex; gap:0.5rem;">
           <input type="text" id="bookmarklet-code-input" readonly 
                  style="font-family:monospace; font-size:0.82rem; background:#f7f7f7; border:1px solid #ccc; border-radius:6px; padding:0.6rem; flex:1;"
-                 value="javascript:(function(){var h=document.documentElement.outerHTML;var t=document.createElement('textarea');t.value=h;t.style.position='fixed';t.style.top='-9999px';document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);var d=document.createElement('div');d.style='position:fixed;top:20px;right:20px;background:#2a7a2a;color:#fff;padding:1rem 1.5rem;border-radius:10px;z-index:999999;font-family:sans-serif;font-size:1rem;box-shadow:0 4px 16px rgba(0,0,0,0.3)';d.innerHTML='&#9989; P&aacute;gina copiada! Volte &agrave; SURE e clique em <strong>Colar P&aacute;gina</strong>';document.body.appendChild(d);setTimeout(function(){d.remove()},4000);})();">
+                 value="javascript:(function(){var S='http://localhost:3000',h=document.documentElement.outerHTML;function b(m,g,a){var d=document.createElement('div');d.style='position:fixed;top:20px;right:20px;background:'+(g?'#2a7a2a':'#C75233')+';color:#fff;padding:1.1rem 1.6rem;border-radius:10px;z-index:9999999;font-family:sans-serif;font-size:1rem;box-shadow:0 6px 24px rgba(0,0,0,0.35);max-width:380px;line-height:1.5';d.innerHTML=m;document.body.appendChild(d);setTimeout(function(){d.remove()},a||4000)}function c(){if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(h).then(function(){b('&#9989; <strong>P&aacute;gina copiada!</strong><br>Volte &agrave; SURE e clique em <strong>Colar P&aacute;gina</strong>',1)}).catch(function(){f()})}else{f()}}function f(){var t=document.createElement('textarea');t.value=h;t.style.position='fixed';t.style.top='0';t.style.left='0';t.style.opacity='0';document.body.appendChild(t);t.focus();t.select();try{document.execCommand('copy');b('&#9989; <strong>P&aacute;gina copiada!</strong><br>Volte &agrave; SURE e clique em <strong>Colar P&aacute;gina</strong>',1)}catch(e){b('&#9888; Abra o c&oacute;digo com Ctrl+U, Ctrl+A e Ctrl+C',0)}document.body.removeChild(t)}fetch(S+'/api/import-active-client-html',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({html:h})}).then(function(r){return r.json()}).then(function(d){if(d.success){b('&#127881; <strong>'+d.total_found+' im&oacute;veis capturados!</strong><br>Guardados em: '+(d.client_name||'cliente ativo'),1,3500)}else{c()}}).catch(function(){c()})})();">
           <button type="button" id="btn-copy-bm-code" class="btn btn-primary" style="white-space:nowrap;">
             <i class="fa-solid fa-copy"></i> Copiar Código
           </button>
@@ -571,6 +616,166 @@
   </div>
 </div>
 
+<!-- ── MODAL: MARCADOR DE VISITAS & GOOGLE CALENDAR ──────────────── -->
+<div id="modal-visits" class="modal-backdrop hidden">
+  <div class="modal-card modal-visits-card" style="max-width:680px; max-height:90vh; display:flex; flex-direction:column;">
+    <div class="modal-header" style="background:#231F20; color:#fff; padding:1.1rem 1.4rem; border-bottom:2px solid var(--terracota);">
+      <div style="display:flex; align-items:center; gap:0.7rem;">
+        <div style="width:36px; height:36px; border-radius:8px; background:var(--terracota); display:flex; align-items:center; justify-content:center; color:#fff; font-size:1.1rem;">
+          <i class="fa-solid fa-calendar-days"></i>
+        </div>
+        <div>
+          <h3 style="margin:0; font-size:1.15rem; color:#fff;">Marcador de Visitas</h3>
+          <p style="margin:0; font-size:0.78rem; color:var(--cinza);">SURE. Real Estate — Integração Google Calendar</p>
+        </div>
+      </div>
+      <button class="btn-close-modal" id="btn-close-visits-modal" style="color:#fff;">&times;</button>
+    </div>
+
+    <!-- Modal Tabs -->
+    <div class="visits-modal-tabs" style="display:flex; background:#EDE3D8; padding:6px 14px 0; border-bottom:1px solid #D8D1C9; gap:6px;">
+      <button type="button" id="tab-btn-new-visit" class="tab-visit-btn active">
+        <i class="fa-solid fa-plus"></i> Agendar Nova Visita
+      </button>
+      <button type="button" id="tab-btn-list-visits" class="tab-visit-btn">
+        <i class="fa-solid fa-list-check"></i> Agenda de Visitas (<span id="visits-tab-count">0</span>)
+      </button>
+    </div>
+
+    <!-- Tab 1: New Visit Form -->
+    <div id="tab-pane-new-visit" class="visits-tab-pane" style="padding:1.4rem; overflow-y:auto; flex:1;">
+      <form id="form-visit">
+        <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+          <div class="form-group">
+            <label for="visit-client-select" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-user"></i> Cliente
+            </label>
+            <select id="visit-client-select" class="form-control" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;" required>
+              <option value="">Selecione o Cliente...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="visit-consultant-select" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-user-tie"></i> Consultor Responsável
+            </label>
+            <select id="visit-consultant-select" class="form-control" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;" required>
+              <option value="">Selecione o Consultor...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label for="visit-listing-title" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+            <i class="fa-solid fa-house"></i> Imóvel / Título da Visita
+          </label>
+          <input type="text" id="visit-listing-title" class="form-control" placeholder="Ex: T3 com Garagem em Matosinhos Sul" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;" required>
+        </div>
+
+        <div class="form-row" style="display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:10px; margin-bottom:12px;">
+          <div class="form-group">
+            <label for="visit-date" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-regular fa-calendar"></i> Data da Visita
+            </label>
+            <input type="date" id="visit-date" class="form-control" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;" required>
+          </div>
+          <div class="form-group">
+            <label for="visit-time" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-regular fa-clock"></i> Hora de Início
+            </label>
+            <input type="time" id="visit-time" class="form-control" value="15:00" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;" required>
+          </div>
+          <div class="form-group">
+            <label for="visit-duration" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-stopwatch"></i> Duração
+            </label>
+            <select id="visit-duration" class="form-control" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;">
+              <option value="30">30 min</option>
+              <option value="45">45 min</option>
+              <option value="60" selected>1 hora</option>
+              <option value="90">1h 30 min</option>
+              <option value="120">2 horas</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row" style="display:grid; grid-template-columns:1.2fr 1fr; gap:10px; margin-bottom:12px;">
+          <div class="form-group">
+            <label for="visit-location" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-location-dot"></i> Localização / Morada
+            </label>
+            <div style="display:flex; gap:6px;">
+              <input type="text" id="visit-location" class="form-control" placeholder="Rua / Freguesia / Concelho" style="flex:1; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;">
+              <button type="button" id="btn-visit-open-map" class="btn btn-secondary" title="Ver no Google Maps" style="padding:0 0.8rem;">
+                <i class="fa-solid fa-map-location-dot"></i>
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="visit-price" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-tag"></i> Preço do Imóvel
+            </label>
+            <input type="text" id="visit-price" class="form-control" placeholder="Ex: 320.000 €" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;">
+          </div>
+        </div>
+
+        <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+          <div class="form-group">
+            <label for="visit-contact" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-phone"></i> Contacto Proprietário / Colega
+            </label>
+            <input type="text" id="visit-contact" class="form-control" placeholder="Nome e Telemóvel" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;">
+          </div>
+          <div class="form-group">
+            <label for="visit-link" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+              <i class="fa-solid fa-link"></i> Link do Imóvel
+            </label>
+            <input type="url" id="visit-link" class="form-control" placeholder="https://www.idealista.pt/..." style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9;">
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label for="visit-notes" style="font-size:0.82rem; font-weight:700; display:block; margin-bottom:4px;">
+            <i class="fa-solid fa-comment-dots"></i> Notas / Código de Acesso / Instruções
+          </label>
+          <textarea id="visit-notes" class="form-control" rows="2" placeholder="Ex: Código do portão: 4521, chave com o porteiro..." style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid #D8D1C9; font-family:inherit;"></textarea>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding-top:10px; border-top:1px solid #E0D6CB;">
+          <button type="button" id="btn-add-google-calendar-direct" class="btn btn-gcalendar" style="background:#4285F4; color:#fff; border-color:#4285F4; display:flex; align-items:center; gap:8px;" title="Abre o evento pronto no Google Calendar">
+            <i class="fa-brands fa-google"></i> Adicionar ao Google Calendar
+          </button>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+            <button type="submit" class="btn btn-primary" style="background:var(--terracota); border-color:var(--terracota);">
+              <i class="fa-solid fa-calendar-check"></i> Guardar Visita
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Tab 2: Scheduled Visits List -->
+    <div id="tab-pane-list-visits" class="visits-tab-pane hidden" style="padding:1.4rem; overflow-y:auto; flex:1;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <div class="visits-filter-group" style="display:flex; gap:6px;">
+          <button type="button" class="btn-filter-visit active" data-filter="all">Todas</button>
+          <button type="button" class="btn-filter-visit" data-filter="today">Hoje</button>
+          <button type="button" class="btn-filter-visit" data-filter="upcoming">Próximas</button>
+          <button type="button" class="btn-filter-visit" data-filter="done">Realizadas</button>
+        </div>
+        <button type="button" id="btn-refresh-visits" class="btn btn-secondary btn-sm" title="Atualizar lista">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+      </div>
+
+      <div id="visits-cards-container" style="display:flex; flex-direction:column; gap:10px;">
+        <!-- Visitas renderizadas dinamicamente via JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ── MODAL: GOOGLE DRIVE & SHEETS SETTINGS ────────────────────── -->
 <div id="modal-drive-settings" class="modal-backdrop hidden">
   <div class="modal-card" style="max-width:560px;">
@@ -631,6 +836,6 @@
 </div>
 
 <div id="toast-container" class="toast-container"></div>
-<script src="/main.js"></script>
+<script src="/main.js?v=3.2"></script>
 </body>
 </html>

@@ -8,6 +8,7 @@ const SEED_DATA_DIR = path.join(__dirname, 'data');
 const CLIENTS_FILE = path.join(DATA_DIR, 'clients.json');
 const LISTINGS_FILE = path.join(DATA_DIR, 'listings.json');
 const CONSULTANTS_FILE = path.join(DATA_DIR, 'consultants.json');
+const VISITS_FILE = path.join(DATA_DIR, 'visits.json');
 
 const PRIORITY_LIMITS = {
   'SU': 2, // Super Urgente: 2 dias
@@ -17,12 +18,24 @@ const PRIORITY_LIMITS = {
 
 const activeScrapes = {};
 
+function syncWrite(targetFile, data) {
+  fs.writeFileSync(targetFile, JSON.stringify(data, null, 2), 'utf-8');
+  if (SEED_DATA_DIR && SEED_DATA_DIR !== DATA_DIR && fs.existsSync(SEED_DATA_DIR)) {
+    try {
+      const altFile = path.join(SEED_DATA_DIR, path.basename(targetFile));
+      fs.writeFileSync(altFile, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (e) {
+      // Ignorar erros em ambiente read-only
+    }
+  }
+}
+
 function ensureDataFiles() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  // Copiar ficheiros seed para a pasta de dados se não existirem
+  // Copiar ficheiros existentes da pasta seed se a pasta de destino não tiver
   ['clients.json', 'consultants.json', 'listings.json'].forEach(fileName => {
     const targetFile = path.join(DATA_DIR, fileName);
     const seedFile = path.join(SEED_DATA_DIR, fileName);
@@ -45,43 +58,15 @@ function ensureDataFiles() {
   }
 
   if (!fs.existsSync(CLIENTS_FILE)) {
-    const defaultClients = [
-      {
-        id: "client-exemplo-1",
-        name: "Carlos & Ana Silva",
-        operation: "comprar",
-        property_type: "casas",
-        location: "lisboa",
-        max_price: 350000,
-        min_price: 180000,
-        typology: ["t2", "t3"],
-        notes: "Procura T2 ou T3 em Lisboa com elevador.",
-        consultant_id: "consultant-ana",
-        priority: "SU", // 2 dias
-        last_sent_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // Atrasado (3 dias atrás)
-        created_at: new Date().toISOString()
-      },
-      {
-        id: "client-exemplo-2",
-        name: "Miguel Oliveira",
-        operation: "comprar",
-        property_type: "casas",
-        location: "braga",
-        max_price: 250000,
-        min_price: 120000,
-        typology: ["t2"],
-        notes: "Perto do centro de Braga com garagem.",
-        consultant_id: "consultant-tiago",
-        priority: "U", // 5 dias
-        last_sent_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // Em dia (1 dia atrás)
-        created_at: new Date().toISOString()
-      }
-    ];
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(defaultClients, null, 2), 'utf-8');
+    fs.writeFileSync(CLIENTS_FILE, JSON.stringify([], null, 2), 'utf-8');
   }
 
   if (!fs.existsSync(LISTINGS_FILE)) {
     fs.writeFileSync(LISTINGS_FILE, JSON.stringify([], null, 2), 'utf-8');
+  }
+
+  if (!fs.existsSync(VISITS_FILE)) {
+    fs.writeFileSync(VISITS_FILE, JSON.stringify([], null, 2), 'utf-8');
   }
 }
 
@@ -113,14 +98,14 @@ class ClientManager {
       else consultants.push(consultant);
     }
 
-    fs.writeFileSync(CONSULTANTS_FILE, JSON.stringify(consultants, null, 2), 'utf-8');
+    syncWrite(CONSULTANTS_FILE, consultants);
     return consultant;
   }
 
   deleteConsultant(consultantId) {
     let consultants = this.getConsultants();
     consultants = consultants.filter(c => c.id !== consultantId);
-    fs.writeFileSync(CONSULTANTS_FILE, JSON.stringify(consultants, null, 2), 'utf-8');
+    syncWrite(CONSULTANTS_FILE, consultants);
 
     // Reassign clients of this consultant to "consultant-geral"
     let clients = this.getClients();
@@ -129,7 +114,7 @@ class ClientManager {
         c.consultant_id = 'consultant-geral';
       }
     });
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+    syncWrite(CLIENTS_FILE, clients);
     return true;
   }
 
@@ -191,7 +176,7 @@ class ClientManager {
       }
     }
 
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+    syncWrite(CLIENTS_FILE, clients);
     return client;
   }
 
@@ -202,7 +187,7 @@ class ClientManager {
 
     client.consultant_id = consultantId;
     client.updated_at = new Date().toISOString();
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+    syncWrite(CLIENTS_FILE, clients);
     return client;
   }
 
@@ -213,18 +198,18 @@ class ClientManager {
 
     client.last_sent_at = new Date().toISOString();
     client.updated_at = new Date().toISOString();
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+    syncWrite(CLIENTS_FILE, clients);
     return client;
   }
 
   deleteClient(clientId) {
     let clients = this.getClients();
     clients = clients.filter(c => c.id !== clientId);
-    fs.writeFileSync(CLIENTS_FILE, JSON.stringify(clients, null, 2), 'utf-8');
+    syncWrite(CLIENTS_FILE, clients);
 
     let listings = this.getListings();
     listings = listings.filter(l => l.client_id !== clientId);
-    fs.writeFileSync(LISTINGS_FILE, JSON.stringify(listings, null, 2), 'utf-8');
+    syncWrite(LISTINGS_FILE, listings);
     return true;
   }
 
@@ -265,23 +250,44 @@ class ClientManager {
       item.client_id = clientId;
       if (!item.scraped_at) item.scraped_at = new Date().toISOString();
 
-      const existingIdx = existing.findIndex(l => l.client_id === clientId && l.id === item.id);
+      const itemSource = item.source || 'idealista';
+      const itemSources = Array.isArray(item.sources) ? item.sources : [itemSource];
+      const itemPortalLinks = item.portal_links || (item.link ? { [itemSource]: item.link } : {});
+
+      const normTitle = (item.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 30);
+      const price = item.price_num || 0;
+
+      const existingIdx = existing.findIndex(l =>
+        l.client_id === clientId && (
+          l.id === item.id ||
+          l.link === item.link ||
+          (normTitle.length > 8 && price > 10000 && (l.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 30) === normTitle && Math.abs((l.price_num || 0) - price) < 5000)
+        )
+      );
+
       if (existingIdx !== -1) {
-        const currentStatus = existing[existingIdx].status || 'novo';
-        const existingPhotos = existing[existingIdx].photos || [];
-        const combinedPhotos = Array.from(new Set([...(item.photos || []), ...existingPhotos, item.photo].filter(Boolean)));
+        const current = existing[existingIdx];
+        const currentSources = Array.isArray(current.sources) ? current.sources : [current.source || 'idealista'];
+        const mergedSources = Array.from(new Set([...currentSources, ...itemSources].filter(Boolean)));
+        const mergedLinks = { ...(current.portal_links || (current.link ? { [current.source || 'idealista']: current.link } : {})), ...itemPortalLinks };
+        const combinedPhotos = Array.from(new Set([...(item.photos || []), ...(current.photos || []), item.photo, current.photo].filter(Boolean)));
 
         existing[existingIdx] = {
-          ...existing[existingIdx],
+          ...current,
           ...item,
-          status: currentStatus,
+          sources: mergedSources,
+          portal_links: mergedLinks,
           photos: combinedPhotos.length > 0 ? combinedPhotos : (item.photo ? [item.photo] : []),
-          description: item.description || existing[existingIdx].description || '',
+          photo: combinedPhotos[0] || current.photo || item.photo || '',
+          description: item.description || current.description || '',
+          status: current.status || 'novo',
           updated_at: new Date().toISOString()
         };
         updatedCount++;
       } else {
         item.status = item.status || 'novo';
+        item.sources = itemSources;
+        item.portal_links = itemPortalLinks;
         item.created_at = new Date().toISOString();
         if (!item.photos || item.photos.length === 0) {
           item.photos = item.photo ? [item.photo] : [];
@@ -291,7 +297,7 @@ class ClientManager {
       }
     });
 
-    fs.writeFileSync(LISTINGS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+    syncWrite(LISTINGS_FILE, existing);
     return { addedCount, updatedCount };
   }
 
@@ -309,7 +315,7 @@ class ClientManager {
     });
 
     if (updated) {
-      fs.writeFileSync(LISTINGS_FILE, JSON.stringify(listings, null, 2), 'utf-8');
+      syncWrite(LISTINGS_FILE, listings);
     }
     return updated;
   }
@@ -329,10 +335,21 @@ class ClientManager {
     const initialLen = listings.length;
     listings = listings.filter(l => !(l.id === listingId && l.client_id === clientId));
     if (listings.length !== initialLen) {
-      fs.writeFileSync(LISTINGS_FILE, JSON.stringify(listings, null, 2), 'utf-8');
+      syncWrite(LISTINGS_FILE, listings);
       return true;
     }
     return false;
+  }
+
+  clearClientListings(clientId) {
+    ensureDataFiles();
+    const data = fs.readFileSync(LISTINGS_FILE, 'utf-8');
+    let listings = JSON.parse(data || '[]');
+    const initialLen = listings.length;
+    listings = listings.filter(l => l.client_id !== clientId);
+    const deletedCount = initialLen - listings.length;
+    syncWrite(LISTINGS_FILE, listings);
+    return { success: true, deletedCount };
   }
 
   deduplicateListings(clientId = null) {
@@ -360,7 +377,7 @@ class ClientManager {
     });
 
     if (removed > 0) {
-      fs.writeFileSync(LISTINGS_FILE, JSON.stringify(unique, null, 2), 'utf-8');
+      syncWrite(LISTINGS_FILE, unique);
       console.log(`🧹 Deduplicação: ${removed} anúncios repetidos removidos.`);
     }
     return unique;
@@ -372,6 +389,78 @@ class ClientManager {
 
   getScrapeStatus(clientId) {
     return activeScrapes[clientId] || null;
+  }
+
+  // ── VISITS (MARCADOR DE VISITAS / GOOGLE CALENDAR) ────────────────────────
+  getVisits(clientId = null, consultantId = null) {
+    ensureDataFiles();
+    try {
+      const data = fs.readFileSync(VISITS_FILE, 'utf-8');
+      let visits = JSON.parse(data || '[]');
+      if (clientId) {
+        visits = visits.filter(v => v.client_id === clientId);
+      }
+      if (consultantId) {
+        visits = visits.filter(v => v.consultant_id === consultantId);
+      }
+      // Ordenar por data/hora crescente
+      visits.sort((a, b) => new Date(a.start_time || a.date) - new Date(b.start_time || b.date));
+      return visits;
+    } catch (e) {
+      console.error('Erro ao ler visits.json:', e);
+      return [];
+    }
+  }
+
+  saveVisit(visitData) {
+    ensureDataFiles();
+    const visits = this.getVisits();
+    let visit = { ...visitData };
+
+    if (!visit.id) {
+      visit.id = 'visit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+      visit.created_at = new Date().toISOString();
+      visit.status = visit.status || 'agendada';
+      visits.push(visit);
+    } else {
+      const idx = visits.findIndex(v => v.id === visit.id);
+      if (idx !== -1) {
+        visit.updated_at = new Date().toISOString();
+        visits[idx] = { ...visits[idx], ...visit };
+      } else {
+        visit.created_at = new Date().toISOString();
+        visit.status = visit.status || 'agendada';
+        visits.push(visit);
+      }
+    }
+
+    syncWrite(VISITS_FILE, visits);
+    return visit;
+  }
+
+  deleteVisit(visitId) {
+    ensureDataFiles();
+    let visits = this.getVisits();
+    const initialLen = visits.length;
+    visits = visits.filter(v => v.id !== visitId);
+    if (visits.length !== initialLen) {
+      syncWrite(VISITS_FILE, visits);
+      return true;
+    }
+    return false;
+  }
+
+  updateVisitStatus(visitId, status) {
+    ensureDataFiles();
+    const visits = this.getVisits();
+    const visit = visits.find(v => v.id === visitId);
+    if (visit) {
+      visit.status = status;
+      visit.updated_at = new Date().toISOString();
+      syncWrite(VISITS_FILE, visits);
+      return visit;
+    }
+    return null;
   }
 }
 

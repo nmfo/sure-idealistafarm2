@@ -62,29 +62,45 @@ function buildLocationUrl(criteria) {
     });
   }
 
-  const filterParts = [];
-  const hasPrice = (criteria.max_price && !isNaN(criteria.max_price)) ||
-                   (criteria.min_price && !isNaN(criteria.min_price));
+  const filterTokens = [];
 
-  if (criteria.max_price && !isNaN(criteria.max_price)) {
-    filterParts.push(`com-preco-max_${criteria.max_price}`);
+  if (criteria.max_price && !isNaN(criteria.max_price) && Number(criteria.max_price) > 0) {
+    filterTokens.push(`preco-max_${Number(criteria.max_price)}`);
   }
-  if (criteria.min_price && !isNaN(criteria.min_price)) {
-    filterParts.push(`com-preco-min_${criteria.min_price}`);
+  if (criteria.min_price && !isNaN(criteria.min_price) && Number(criteria.min_price) > 0) {
+    filterTokens.push(`preco-min_${Number(criteria.min_price)}`);
   }
 
+  const minAreaNum = criteria.min_area || criteria.min_surface || null;
+  const maxAreaNum = criteria.max_area || criteria.max_surface || null;
+  if (minAreaNum && !isNaN(minAreaNum) && Number(minAreaNum) > 0) {
+    filterTokens.push(`tamanho-min_${Number(minAreaNum)}`);
+  }
+  if (maxAreaNum && !isNaN(maxAreaNum) && Number(maxAreaNum) > 0) {
+    filterTokens.push(`tamanho-max_${Number(maxAreaNum)}`);
+  }
+
+  let filterSegment = '/';
   if (isResidential) {
-    if (hasPrice) {
-      // Com preço: /com-preco-max_400000,t3,t4-t5/ ou /com-preco-max_400000,t4-t5/
-      normalizedTyps.forEach(t => filterParts.push(t));
+    if (filterTokens.length > 0) {
+      // O primeiro parâmetro leva o prefixo 'com-', os restantes não levam 'com-'
+      const firstWithCom = `com-${filterTokens[0]}`;
+      const rest = filterTokens.slice(1);
+      const allParts = [firstWithCom, ...rest, ...normalizedTyps];
+      filterSegment = `/${allParts.join(',')}/`;
     } else if (normalizedTyps.length > 0) {
-      // Sem preço: /t4-t5/ ou /t2-t3/ ou /t3-t4-t5/
+      // Apenas tipologias sem filtros: /t2-t3/ ou /t3/
       const combinedTypSegment = normalizedTyps.join('-');
-      filterParts.push(combinedTypSegment);
+      filterSegment = `/${combinedTypSegment}/`;
+    }
+  } else {
+    if (filterTokens.length > 0) {
+      const firstWithCom = `com-${filterTokens[0]}`;
+      const rest = filterTokens.slice(1);
+      filterSegment = `/${[firstWithCom, ...rest].join(',')}/`;
     }
   }
 
-  const filterSegment = filterParts.length > 0 ? `/${filterParts.join(',')}/` : '/';
   return `https://www.idealista.pt/${opPath}/${location}${filterSegment}`;
 }
 
@@ -104,71 +120,135 @@ function isRealPropertyPhoto(url) {
   return s.includes('idealista.pt') || s.includes('image.master') || s.includes('id.pro.pt') || s.includes('img3.idealista.com') || s.includes('multimedia') || s.includes('photos');
 }
 
+function extractCleanPropertyLocation(title = '', explicitLoc = '', clientLocation = '') {
+  // 1. Se existir localização explícita que não seja um título longo nem 'Braga'
+  if (explicitLoc && explicitLoc.length > 2 && explicitLoc.length < 80 && explicitLoc.toLowerCase() !== 'braga' && !explicitLoc.includes('Apartamento') && !explicitLoc.includes('Moradia')) {
+    return explicitLoc;
+  }
+
+  // 2. Extrair da estrutura do título do Idealista
+  if (title) {
+    const commaParts = title.split(',').map(s => s.trim()).filter(Boolean);
+    if (commaParts.length >= 2) {
+      const validParts = commaParts.slice(1).filter(p => !/^(?:n[º°]?\s*)?\d+(?:\s*s\/n)?$/i.test(p) && p.toLowerCase() !== 's/n');
+      if (validParts.length > 0) {
+        return validParts.join(', ');
+      }
+    }
+
+    const emMatch = title.match(/\s+em\s+([^,]+(?:,\s*[^,]+)*)/i);
+    if (emMatch && emMatch[1]) {
+      return emMatch[1].trim();
+    }
+  }
+
+  if (clientLocation && clientLocation.trim()) {
+    return clientLocation.trim();
+  }
+
+  return 'Localização Geral';
+}
+
 // ── Ultra-Robust HTML and Text Parser ──────────────────────────────────────────
 
-function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt') {
+function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt', clientLocation = '') {
   if (!content || typeof content !== 'string') return [];
   const listings = [];
   const seenIds = new Set();
+  const seenUrls = new Set();
 
   const $ = cheerio.load(content);
 
-  // 1. Selector universal para artigos e containers de imóveis do Idealista
-  $('article, div.item-info-container, div.item[data-element-id], div.item-multimedia-container, div[data-element-id]').each((i, el) => {
+  // 1. Selector universal para artigos e containers de imóveis (Idealista, Arys, RE/MAX, Zome)
+  $('article, div.item-info-container, div.item[data-element-id], div.card, div.property-item, div.property-card, div[class*="property"], div[class*="listing"], a[href*="/imovel/"], a[href*="/imoveis/"], a[href*="/listing/"], a[href*="/pt/imovel/"], a[href*="/pt/imoveis/"], a[href*="-ZMP"], a[href*="ZMT-"], a[href*="/pt/moradia-"], a[href*="/pt/apartamento-"], a[href*="/pt/terreno-"], a[href*="/pt/predio-"], a[href*="/pt/loja-"]').each((i, el) => {
     try {
-      const art = $(el);
-      let listingId = art.attr('data-element-id');
+      let container = $(el);
+      let href = '';
 
-      const titleLink = art.find('a.item-link, a[href*="/imovel/"], a[href*="/empreendimento/"]').first();
-      let href = titleLink.attr('href') || '';
-
-      if (!href) {
-        // Tentar encontrar qualquer link interno
-        const anyLink = art.find('a').filter((_, a) => ($(a).attr('href') || '').includes('/imovel/')).first();
-        href = anyLink.attr('href') || '';
+      if (el.tagName === 'a') {
+        href = container.attr('href') || '';
+        // Procurar o container pai relevante
+        const parentCard = container.closest('div.card, div.property-item, div.item, div.col, div[class*="col-"], li, article, div.card-body, .property-card, div[class*="property"], div[class*="listing"]');
+        if (parentCard.length) container = parentCard;
+      } else {
+        const titleLink = container.find('a.item-link, a[href*="/imovel/"], a[href*="/imoveis/"], a[href*="/empreendimento/"], a[href*="/listing/"], a[href*="/pt/imovel/"], a[href*="-ZMP"], a[href*="ZMT-"]').first();
+        href = titleLink.attr('href') || '';
+        if (!href) {
+          const anyLink = container.find('a').filter((_, a) => ($(a).attr('href') || '').includes('/imovel/') || ($(a).attr('href') || '').includes('/imoveis/') || ($(a).attr('href') || '').includes('-ZMP')).first();
+          href = anyLink.attr('href') || '';
+        }
       }
 
-      if (!href) return;
+      if (!href || href.includes('#') || href.startsWith('javascript:')) return;
 
-      const link = href.startsWith('/') ? `${baseUrl}${href}` : href;
+      // Normalizar link completo
+      let fullLink = href;
+      if (fullLink.startsWith('/')) {
+        if (content.includes('arys.pt')) fullLink = 'https://arys.pt' + href;
+        else if (content.includes('remax.pt')) fullLink = 'https://www.remax.pt' + href;
+        else if (content.includes('zome.pt') || href.includes('-ZMP') || href.includes('ZMT-')) fullLink = 'https://www.zome.pt' + href;
+        else fullLink = baseUrl.replace(/\/$/, '') + href;
+      }
 
+      if (seenUrls.has(fullLink)) return;
+      seenUrls.add(fullLink);
+
+      // Identificar portal de origem
+      let portalSource = 'idealista';
+      if (fullLink.includes('remax.pt') || fullLink.includes('remax')) portalSource = 'remax';
+      else if (fullLink.includes('zome.pt') || fullLink.includes('zome') || fullLink.includes('-ZMP') || fullLink.includes('ZMT-')) portalSource = 'zome';
+      else if (fullLink.includes('arys.pt') || fullLink.includes('arys')) portalSource = 'arys';
+
+      // Extrair ID único
+      let listingId = container.attr('data-element-id') || '';
       if (!listingId) {
-        const idMatch = href.match(/\/imovel\/(\d+)\//);
-        listingId = idMatch ? idMatch[1] : `id_${i + 1}_${Date.now()}`;
+        const zomeMatch = fullLink.match(/(ZMP[T]?[0-9A-Za-z]+)/i);
+        const generalMatch = fullLink.match(/(?:imovel|imoveis|listing)\/([^\/\?#]+)/i);
+        listingId = zomeMatch ? zomeMatch[1] : (generalMatch ? generalMatch[1] : `prop_${i + 1}_${Date.now()}`);
       }
 
       if (seenIds.has(listingId)) return;
       seenIds.add(listingId);
 
+      // Extrair texto completo do container
+      const containerText = container.text().replace(/\s+/g, ' ').trim();
+
       // Título
-      let title = titleLink.text().trim() || titleLink.attr('title') || art.find('a').first().text().trim() || '';
-      if (!title || title.length < 5) {
-        title = art.find('.item-description, p').first().text().trim().substring(0, 60) || `Imóvel no Idealista (${listingId})`;
+      let title = container.find('h1, h2, h3, h4, a.item-link, a[title], [class*="title"]').first().text().trim();
+      if (!title || title.length < 4) {
+        title = container.find('a').first().attr('title') || container.find('a').first().text().trim() || `Imóvel ${portalSource.toUpperCase()} (${listingId})`;
       }
-      title = title.replace(/\s+/g, ' ');
+      title = title.replace(/\s+/g, ' ').trim();
 
       // Preço
-      const rawPriceEl = art.find('span.item-price, span.price, div.price-row, .txt-bold, [class*="price"]').first();
-      let rawPriceText = rawPriceEl.text().trim() || '';
+      let rawPriceText = '';
+      const priceEl = container.find('span.item-price, span.price, div.price-row, .txt-bold, [class*="price"], h2 span, h3 span, [class*="valor"]').first();
+      if (priceEl.length) {
+        rawPriceText = priceEl.text().trim();
+      }
+      if (!rawPriceText || !rawPriceText.includes('€')) {
+        const pm = containerText.match(/(\d[\d\.\s]*\s*€)/);
+        if (pm) rawPriceText = pm[1];
+      }
 
       // Baixa de Preço
-      const priceDropEl = art.find('.item-price-drop, .price-drop, .discount, [class*="discount"]').first();
+      const priceDropEl = container.find('.item-price-drop, .price-drop, .discount, [class*="discount"]').first();
       const priceDropText = priceDropEl.text().trim() || '';
 
       let priceM2 = '';
-      const m2Match = rawPriceText.match(/(\d+[\d\.]*\s*€\/m²)/i);
+      const m2Match = containerText.match(/(\d+[\d\.]*\s*€\/m²)/i);
       if (m2Match) {
         priceM2 = m2Match[1];
-        rawPriceText = rawPriceText.replace(m2Match[0], '').trim();
       }
 
-      const mainPriceMatch = rawPriceText.match(/(\d+[\d\.]*\s*€)/);
-      const cleanPrice = mainPriceMatch ? mainPriceMatch[1] : (rawPriceText || 'Consultar');
+      const mainPriceMatch = rawPriceText.match(/(\d[\d\.\s]*\s*€)/);
+      const cleanPrice = mainPriceMatch ? mainPriceMatch[1].trim() : (rawPriceText || 'Consultar €');
       const priceNum = parseInt(cleanPrice.replace(/[^\d]/g, ''), 10) || 0;
 
       // Fotografias
       const photos = [];
-      art.find('picture source, picture img, img').each((_, imgEl) => {
+      const imgScope = container.closest('div.card, div.col, article, li, div.property-item, div[class*="property"]').length ? container.closest('div.card, div.col, article, li, div.property-item, div[class*="property"]') : container;
+      imgScope.find('picture source, picture img, img').each((_, imgEl) => {
         const srcCand = $(imgEl).attr('src') || $(imgEl).attr('data-ondemand-img') || $(imgEl).attr('data-src') || $(imgEl).attr('data-srcset') || '';
         const srcsetCand = $(imgEl).attr('srcset') || '';
 
@@ -176,7 +256,7 @@ function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt') {
           if (cand) {
             cand.split(',').forEach(entry => {
               const url = cleanPhotoUrl(entry);
-              if (url && isRealPropertyPhoto(url) && !photos.includes(url)) {
+              if (url && !url.includes('.gif') && !url.includes('.svg') && !url.includes('logo') && !url.includes('avatar') && !url.includes('icon') && !photos.includes(url)) {
                 photos.push(url);
               }
             });
@@ -186,10 +266,10 @@ function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt') {
 
       const primaryPhoto = photos.length > 0 ? photos[0] : '';
 
-      // Detalhes (tipologia, m2, garagem, elevador, piso, tempo de mercado)
+      // Detalhes & Localização
       const details = [];
       let marketTag = '';
-      art.find('span.item-detail, div.item-detail, span.item-detail-char, .item-detail-info').each((_, d) => {
+      container.find('span.item-detail, div.item-detail, span.item-detail-char, .item-detail-info, [class*="spec"]').each((_, d) => {
         const txt = $(d).text().trim();
         if (txt) {
           if (txt.includes('€/m²') && !priceM2) {
@@ -203,40 +283,57 @@ function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt') {
         }
       });
 
+      let locationText = '';
+      const locEl = container.find('.location, span.item-address, span.location, p.location, span.item-detail-address, [class*="location"]').first();
+      if (locEl.length) {
+        locationText = locEl.text().trim().replace(/&gt;/g, '>').replace(/\s+/g, ' ');
+      }
+      if (!locationText) {
+        locationText = extractCleanPropertyLocation(title, '', clientLocation);
+      }
+
+      // Tipologia & Área
       let typology = '';
       let area = '';
-      let areaNum = 0;
       details.forEach(d => {
         if (/T\d|quarto/i.test(d)) typology = d;
-        if (d.includes('m²')) {
-          area = d;
-          areaNum = parseInt(d.replace(/[^\d]/g, ''), 10) || 0;
-        }
+        if (d.includes('m²')) area = d;
       });
 
+      if (!typology) {
+        const typMatch = containerText.match(/\b(T\d(?:\s*\+\s*\d)?)\b/i);
+        if (typMatch) typology = typMatch[1].toUpperCase();
+      }
+
+      if (!area) {
+        const areaMatch = containerText.match(/(\d+[\d\.]*\s*m²)/i);
+        if (areaMatch) area = areaMatch[1];
+      }
+
+      const areaNum = area ? parseInt(area.replace(/[^\d]/g, ''), 10) : 0;
       if (!priceM2 && priceNum > 0 && areaNum > 0) {
         priceM2 = Math.round(priceNum / areaNum).toLocaleString('pt-PT') + ' €/m²';
       }
 
-      const locationText = art.find('span.item-title, span.location, span.item-address, .item-detail-address').first().text().trim() || 'Braga';
-      const descriptionSnippet = art.find('p.item-description, div.item-description, p.ellipsis').text().trim() || '';
+      const descriptionSnippet = container.find('p.item-description, div.item-description, p.ellipsis, p').first().text().trim() || '';
 
       listings.push({
         id: String(listingId),
         title,
-        link,
+        link: fullLink,
+        source: portalSource,
         price: cleanPrice,
         price_num: priceNum,
         price_m2: priceM2,
         price_drop: priceDropText,
         market_tag: marketTag,
-        location: locationText,
+        location: locationText || 'Portugal',
         typology: typology || '',
         area: area || '',
         photo: primaryPhoto,
         photos: photos.length > 0 ? photos : (primaryPhoto ? [primaryPhoto] : []),
         description: descriptionSnippet,
-        details,
+        details: details.length > 0 ? details : [typology, area, locationText].filter(Boolean),
         status: 'novo',
         is_top3: false,
         scraped_at: new Date().toISOString()
@@ -246,28 +343,38 @@ function parseListingsHtml(content, baseUrl = 'https://www.idealista.pt') {
     }
   });
 
-  // 2. Fallback: Se não encontrou artigos HTML, tentar regex de links e preços no texto
+  // 2. Fallback por Regex e Nuxt State no HTML completo
   if (listings.length === 0) {
-    const linkRegex = /\/imovel\/(\d+)\//g;
+    const linkRegex = /(?:https?:\/\/(?:www\.)?(?:idealista\.pt|arys\.pt|remax\.pt|zome\.pt))?(\/(?:(?:pt\/)?(?:imovel|imoveis|listing))\/([^\/\?"'\s>]+))/gi;
     let match;
     while ((match = linkRegex.exec(content)) !== null) {
-      const id = match[1];
+      const path = match[1];
+      const id = match[2];
       if (!seenIds.has(id)) {
         seenIds.add(id);
+        const fullLink = match[0].startsWith('http') ? match[0] : `${baseUrl.replace(/\/$/, '')}${path}`;
+        let portalSource = 'idealista';
+        if (fullLink.includes('remax.pt')) portalSource = 'remax';
+        else if (fullLink.includes('zome.pt')) portalSource = 'zome';
+        else if (fullLink.includes('arys.pt')) portalSource = 'arys';
+
         listings.push({
           id,
-          title: `Imóvel Idealista (${id})`,
-          link: `https://www.idealista.pt/imovel/${id}/`,
-          price: 'Consultar',
+          title: `Imóvel ${portalSource.toUpperCase()} (${id})`,
+          link: fullLink,
+          source: portalSource,
+          price: 'Consultar €',
           price_num: 0,
           price_m2: '',
-          location: '',
+          location: clientLocation || 'Portugal',
           typology: '',
           area: '',
           photo: '',
           photos: [],
           description: '',
           details: [],
+          status: 'novo',
+          is_top3: false,
           scraped_at: new Date().toISOString()
         });
       }
