@@ -8,13 +8,18 @@ function getGoogleApis() {
 }
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const XLSX = require('xlsx');
 const axios = require('axios');
 
+const IS_VERCEL = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = IS_VERCEL ? path.join(os.tmpdir(), 'sure_data') : path.join(__dirname, 'data');
+const SEED_DATA_DIR = path.join(__dirname, 'data');
+const CREDENTIALS_PATH = path.join(DATA_DIR, 'google_credentials.json');
+const WEBHOOK_PATH = path.join(DATA_DIR, 'google_webhook.json');
+
 // Root folder padrão fornecida pelo utilizador
 const DEFAULT_ROOT_FOLDER_ID = '12ZPicg-lxXy2nyNowmvEUCQNkQi_smaJ';
-const CREDENTIALS_PATH = path.join(__dirname, 'data', 'google_credentials.json');
-const WEBHOOK_PATH = path.join(__dirname, 'data', 'google_webhook.json');
 
 class GoogleDriveService {
   constructor() {
@@ -32,12 +37,20 @@ class GoogleDriveService {
    */
   async initAuth() {
     // 1. Verificar se existe Webhook URL configurado
-    if (!this.webhookUrl && fs.existsSync(WEBHOOK_PATH)) {
-      try {
-        const raw = fs.readFileSync(WEBHOOK_PATH, 'utf-8');
-        const data = JSON.parse(raw);
-        if (data.url) this.webhookUrl = data.url;
-      } catch (e) {}
+    if (!this.webhookUrl) {
+      if (fs.existsSync(WEBHOOK_PATH)) {
+        try {
+          const raw = fs.readFileSync(WEBHOOK_PATH, 'utf-8');
+          const data = JSON.parse(raw);
+          if (data.url) this.webhookUrl = data.url;
+        } catch (e) {}
+      } else if (fs.existsSync(path.join(SEED_DATA_DIR, 'google_webhook.json'))) {
+        try {
+          const raw = fs.readFileSync(path.join(SEED_DATA_DIR, 'google_webhook.json'), 'utf-8');
+          const data = JSON.parse(raw);
+          if (data.url) this.webhookUrl = data.url;
+        } catch (e) {}
+      }
     }
 
     if (this.webhookUrl) {
@@ -58,6 +71,11 @@ class GoogleDriveService {
       if (!credentials && fs.existsSync(CREDENTIALS_PATH)) {
         try {
           const raw = fs.readFileSync(CREDENTIALS_PATH, 'utf-8');
+          credentials = JSON.parse(raw);
+        } catch (e) {}
+      } else if (!credentials && fs.existsSync(path.join(SEED_DATA_DIR, 'google_credentials.json'))) {
+        try {
+          const raw = fs.readFileSync(path.join(SEED_DATA_DIR, 'google_credentials.json'), 'utf-8');
           credentials = JSON.parse(raw);
         } catch (e) {}
       }
@@ -93,14 +111,45 @@ class GoogleDriveService {
     }
   }
 
+  async saveWebhookUrl(url) {
+    try {
+      this.webhookUrl = url ? url.trim() : null;
+      this.initialized = !!this.webhookUrl;
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      try {
+        fs.writeFileSync(WEBHOOK_PATH, JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
+        if (SEED_DATA_DIR && SEED_DATA_DIR !== DATA_DIR && fs.existsSync(SEED_DATA_DIR)) {
+          try {
+            fs.writeFileSync(path.join(SEED_DATA_DIR, 'google_webhook.json'), JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
+          } catch (e) {}
+        }
+      } catch (writeErr) {
+        console.warn('Aviso ao gravar google_webhook.json no disco (a usar memória):', writeErr.message);
+      }
+      return await this.initAuth();
+    } catch (e) {
+      throw new Error(`Falha ao gravar Webhook: ${e.message}`);
+    }
+  }
+
   async saveCredentials(credentialsJson) {
     try {
       const parsed = typeof credentialsJson === 'string' ? JSON.parse(credentialsJson) : credentialsJson;
-      const dataDir = path.join(__dirname, 'data');
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(parsed, null, 2), 'utf-8');
+      try {
+        fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(parsed, null, 2), 'utf-8');
+        if (SEED_DATA_DIR && SEED_DATA_DIR !== DATA_DIR && fs.existsSync(SEED_DATA_DIR)) {
+          try {
+            fs.writeFileSync(path.join(SEED_DATA_DIR, 'google_credentials.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+          } catch (e) {}
+        }
+      } catch (writeErr) {
+        console.warn('Aviso ao gravar credenciais no disco:', writeErr.message);
+      }
       return await this.initAuth();
     } catch (e) {
       throw new Error(`Falha ao gravar credenciais: ${e.message}`);

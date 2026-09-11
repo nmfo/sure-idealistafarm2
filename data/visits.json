@@ -1,0 +1,23 @@
+[
+  {
+    "client_id": "client-sonia-barros-1",
+    "client_name": "Sónia Barros",
+    "client_phone": "",
+    "consultant_id": "consultant-nuno",
+    "consultant_name": "Nuno Oliveira",
+    "title": "Apartamento T3 à venda na Rua Luís Soares Barbosa, 3",
+    "date": "2026-09-11",
+    "time": "12:00",
+    "duration": "60",
+    "start_time": "2026-09-11T11:00:00.000Z",
+    "end_time": "2026-09-11T12:00:00.000Z",
+    "location": "3,  São Victor,  Braga",
+    "price": "279.000 €",
+    "contact": "",
+    "link": "https://www.idealista.pt/imovel/34870244/",
+    "notes": "",
+    "status": "agendada",
+    "id": "visit-1789123234346-j2xhv",
+    "created_at": "2026-09-11T10:40:34.346Z"
+  }
+]
