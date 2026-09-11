@@ -229,4 +229,144 @@ async function runAutoSearchBot(clientId) {
   return { success: true, total_found: allListings.length, listings: allListings };
 }
 
-module.exports = { runAutoSearchBot };
+// ── EXTRACT DIRECT LISTINGS VIA STEALTH BROWSER ─────────────────────────────
+async function fetchDirectListingWithBrowser(rawUrls, clientLocation = '') {
+  const urls = Array.isArray(rawUrls) ? rawUrls : [rawUrls];
+  if (!urls.length) return [];
+
+  let context = null;
+  const results = [];
+
+  try {
+    context = await chromium.launchPersistentContext(SESSION_DIR, {
+      headless: true,
+      args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 800 }
+    });
+
+    const page = await context.newPage();
+
+    for (let rawUrl of urls) {
+      let url = (rawUrl || '').trim();
+      if (!url) continue;
+      if (!url.startsWith('http')) url = 'https://' + url;
+
+      // Extrair ID único
+      let itemId = '';
+      const idMatches = [
+        url.match(/\/imovel\/([^\/\?#]+)/i),
+        url.match(/\/imoveis\/[^\/]+\/([^\/\?#]+)/i),
+        url.match(/\/listing\/([^\/\?#]+)/i),
+        url.match(/\/anuncio\/([^\/\?#]+)/i),
+        url.match(/(ZMP[T]?[0-9A-Za-z]+)/i),
+        url.match(/\/([0-9]{5,})(?:\/|\?|$)/)
+      ];
+      for (const m of idMatches) {
+        if (m && m[1]) { itemId = m[1]; break; }
+      }
+      if (!itemId) itemId = `direct_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+      let portalSource = 'idealista';
+      if (url.includes('remax.pt')) portalSource = 'remax';
+      else if (url.includes('zome.pt')) portalSource = 'zome';
+      else if (url.includes('arys.pt')) portalSource = 'arys';
+      else if (url.includes('supercasa.pt')) portalSource = 'supercasa';
+      else if (url.includes('imovirtual.com')) portalSource = 'imovirtual';
+      else if (url.includes('casa.sapo.pt')) portalSource = 'casasapo';
+
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.waitForTimeout(1500);
+        await acceptCookies(page);
+
+        const extracted = await page.evaluate(() => {
+          let title = document.querySelector('h1.main-info__title, h1, .item-title')?.innerText?.trim() || document.title;
+          let price = document.querySelector('.info-data-price, .item-price, span.txt-bold, [class*="price"]')?.innerText?.trim() || '';
+          let photos = Array.from(document.querySelectorAll('picture img, .main-image img, img[src*="image.master"], img[src*="id.pro.pt"], img[src*="idealista.pt"]'))
+            .map(i => i.src)
+            .filter(s => s && (s.includes('image.master') || s.includes('id.pro.pt') || s.includes('photos')) && !s.includes('.gif') && !s.includes('placeholder'));
+          if (photos.length === 0) {
+            photos = Array.from(document.querySelectorAll('img'))
+              .map(i => i.src)
+              .filter(s => s && (s.includes('image.master') || s.includes('id.pro.pt') || s.includes('zome.pt') || s.includes('remax.pt')) && !s.includes('.gif'));
+          }
+          let details = Array.from(document.querySelectorAll('.info-features span, .item-detail, .details-property_features li, .item-detail-char span'))
+            .map(el => el.innerText.trim())
+            .filter(Boolean);
+          let desc = document.querySelector('.comment, .description-content, meta[name="description"]')?.innerText || '';
+          let pageTitle = document.title;
+          return { title, price, photos, details, desc, pageTitle };
+        });
+
+        // Limpeza e normalização do título
+        let title = (extracted.title || '').replace(/^idealista\.pt\s*[:-]?\s*/i, '').trim();
+        if (!title || title.length < 5 || title.toLowerCase().includes('idealista')) {
+          title = (extracted.pageTitle || '').replace(/\s*—\s*idealista.*$/i, '').trim();
+        }
+        if (!title) title = `Imóvel ${portalSource.toUpperCase()} #${itemId}`;
+
+        // Limpeza do preço
+        let price = extracted.price || 'Consultar €';
+        let priceNum = 0;
+        const cleanDigits = price.replace(/[^\d]/g, '');
+        if (cleanDigits) priceNum = parseInt(cleanDigits, 10);
+
+        // Extração de tipologia
+        let typology = '';
+        const typMatch = `${title} ${extracted.details.join(' ')}`.match(/\b(T[0-9]|\bEst[uú]dio\b)/i);
+        if (typMatch) typology = typMatch[1].toUpperCase();
+
+        // Extração de área
+        let area = '';
+        const areaMatch = `${title} ${extracted.details.join(' ')}`.match(/(\d{2,4})\s*(?:m2|m²)/i);
+        if (areaMatch) area = `${areaMatch[1]} m²`;
+
+        // Extração de localização
+        let location = '';
+        const pageTitle = extracted.pageTitle || '';
+        if (pageTitle.includes('— idealista')) {
+          const locPart = pageTitle.replace(/\s*—\s*idealista.*$/i, '').split(',').slice(1).join(', ').trim();
+          if (locPart) location = locPart;
+        }
+        if (!location) location = clientLocation || 'Portugal';
+
+        const uniquePhotos = Array.from(new Set(extracted.photos.filter(Boolean)));
+
+        results.push({
+          id: itemId,
+          title: title,
+          link: url,
+          price: price,
+          price_num: priceNum,
+          price_m2: '',
+          location: location,
+          typology: typology,
+          area: area,
+          photo: uniquePhotos[0] || '',
+          photos: uniquePhotos,
+          description: extracted.desc || '',
+          details: extracted.details.length > 0 ? extracted.details : [typology, area, location].filter(Boolean),
+          source: portalSource,
+          sources: [portalSource],
+          portal_links: { [portalSource]: url },
+          status: 'novo',
+          is_top3: false,
+          scraped_at: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn(`Erro ao extrair link ${url} via browser:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('Erro ao inicializar browser context:', err);
+  } finally {
+    if (context) {
+      try { await context.close(); } catch {}
+    }
+  }
+
+  return results;
+}
+
+module.exports = { runAutoSearchBot, fetchDirectListingWithBrowser };

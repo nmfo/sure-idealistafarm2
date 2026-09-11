@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const clientManager = require('./clientManager');
-const { parseListingsHtml } = require('./scraper');
-const { runAutoSearchBot } = require('./bot');
+const { parseListingsHtml, fetchDirectListingFromUrl } = require('./scraper');
+const { runAutoSearchBot, fetchDirectListingWithBrowser } = require('./bot');
 const { parseZohoExcel } = require('./importer');
 
 process.on('uncaughtException', (err) => {
@@ -71,7 +71,7 @@ app.delete('/api/consultants/:id', (req, res) => {
 });
 
 // ── CLIENTS API ───────────────────────────────────────────────────────────────
-app.get('/api/clients', (req, res) => {
+app.get('/api/clients', async (req, res) => {
   const clients = clientManager.getClients();
   const allListings = clientManager.getListings();
 
@@ -94,7 +94,7 @@ app.get('/api/clients/:id', (req, res) => {
 
 const { parseClientText } = require('./nlpClientParser');
 
-app.post('/api/chat/parse-client', (req, res) => {
+app.post('/api/chat/parse-client', async (req, res) => {
   const { message } = req.body;
   if (!message || typeof message !== 'string' || message.trim().length < 5) {
     return res.status(400).json({ error: 'Por favor envie uma mensagem com detalhes do cliente.' });
@@ -127,6 +127,14 @@ app.post('/api/chat/parse-client', (req, res) => {
   }
 
   const saved = clientManager.saveClient(clientToSave);
+  
+  // Sincronizar com folha Master no Google Drive se ativo
+  try {
+    if (googleDriveService.webhookUrl) {
+      googleDriveService.saveMasterClient(saved);
+    }
+  } catch(e) {}
+
   const { buildLocationUrl } = require('./scraper');
   const searchUrl = buildLocationUrl(saved);
 
@@ -147,12 +155,20 @@ app.post('/api/chat/parse-client', (req, res) => {
   });
 });
 
-app.post('/api/clients', (req, res) => {
+app.post('/api/clients', async (req, res) => {
   const data = req.body;
   if (!data?.name || !data?.location) {
     return res.status(400).json({ error: 'Nome e localização são obrigatórios' });
   }
   const saved = clientManager.saveClient(data);
+
+  // Sincronizar com folha Master no Google Drive se ativo
+  try {
+    if (googleDriveService.webhookUrl) {
+      googleDriveService.saveMasterClient(saved);
+    }
+  } catch(e) {}
+
   res.json(saved);
 });
 
@@ -163,18 +179,27 @@ app.post('/api/clients/reassign', (req, res) => {
   }
   const updated = clientManager.reassignClient(client_id, consultant_id);
   if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
+  try {
+    if (googleDriveService.webhookUrl) googleDriveService.saveMasterClient(updated);
+  } catch(e) {}
   res.json({ success: true, client: updated });
 });
 
 app.post('/api/clients/mark-sent', (req, res) => {
   const { client_id } = req.body;
   if (!client_id) return res.status(400).json({ error: 'client_id obrigatório' });
-  clientManager.markClientSent(client_id);
+  const updated = clientManager.markClientSent(client_id);
+  try {
+    if (googleDriveService.webhookUrl && updated) googleDriveService.saveMasterClient(updated);
+  } catch(e) {}
   res.json({ success: true });
 });
 
 app.delete('/api/clients/:id', (req, res) => {
   const success = clientManager.deleteClient(req.params.id);
+  try {
+    if (googleDriveService.webhookUrl) googleDriveService.deleteMasterClient(req.params.id);
+  } catch(e) {}
   res.json({ success });
 });
 
@@ -287,34 +312,147 @@ app.post('/api/import-html', (req, res) => {
   });
 });
 
-// ── IMPORT DIRECT LINK ────────────────────────────────────────────────────────
-app.post('/api/import-link', (req, res) => {
-  const { client_id, url, title, price, location } = req.body;
-  if (!client_id || !url) return res.status(400).json({ error: 'client_id e url são obrigatórios' });
-  if (!clientManager.getClient(client_id)) return res.status(404).json({ error: 'Cliente não encontrado' });
+// ── IMPORT DIRECT LINK (SINGLE OR MULTIPLE) ──────────────────────────────────
+app.post('/api/import-link', async (req, res) => {
+  const { client_id, url, urls, title, price, location } = req.body;
+  if (!client_id) return res.status(400).json({ error: 'client_id é obrigatório' });
+  const client = clientManager.getClient(client_id);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
-  const match = url.match(/\/imovel\/(\d+)\//);
-  const itemId = match ? match[1] : `manual_${Date.now()}`;
+  // Reunir lista de links (aceita string com múltiplos links ou array)
+  let rawUrls = [];
+  if (Array.isArray(urls)) {
+    rawUrls = urls;
+  } else if (typeof url === 'string') {
+    rawUrls = url.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+  }
 
-  const listing = {
-    id: itemId,
-    title: title || `Imóvel Idealista #${itemId}`,
-    link: url.startsWith('http') ? url : `https://${url}`,
-    price: price || 'Consultar €',
-    price_num: parseInt((price || '0').replace(/[^\d]/g, ''), 10) || 0,
-    location: location || '',
-    typology: '',
-    area: '',
-    photo: '',
-    photos: [],
-    description: '',
-    details: ['Importado Manualmente'],
-    status: 'novo',
-    scraped_at: new Date().toISOString()
-  };
+  if (rawUrls.length === 0) {
+    return res.status(400).json({ error: 'Pelo menos um URL de imóvel é obrigatório' });
+  }
 
-  const { addedCount } = clientManager.saveListings([listing], client_id, false);
-  res.json({ success: true, listing, added: addedCount > 0 });
+  const fetchedListings = [];
+  const idealistaUrls = [];
+  const otherUrls = [];
+
+  for (const rawUrl of rawUrls) {
+    if (!rawUrl || rawUrl.length < 5) continue;
+    if (rawUrl.includes('idealista.pt')) {
+      idealistaUrls.push(rawUrl);
+    } else {
+      otherUrls.push(rawUrl);
+    }
+  }
+
+  // Processar Idealista com Playwright Stealth persistent session
+  if (idealistaUrls.length > 0) {
+    try {
+      const browserResults = await fetchDirectListingWithBrowser(idealistaUrls, client.location);
+      if (Array.isArray(browserResults)) {
+        fetchedListings.push(...browserResults);
+      }
+    } catch (bErr) {
+      console.warn('Aviso ao extrair Idealista via browser:', bErr.message);
+    }
+  }
+
+  // Processar outros portais (RE/MAX, Zome, Arys, Supercasa, etc.) via HTTP rápido
+  for (const rawUrl of otherUrls) {
+    try {
+      const listing = await fetchDirectListingFromUrl(
+        rawUrl,
+        rawUrls.length === 1 ? { title, price, location } : {},
+        client.location
+      );
+      if (listing) {
+        fetchedListings.push(listing);
+      }
+    } catch (err) {
+      console.warn('Erro ao processar link individual:', rawUrl, err.message);
+    }
+  }
+
+  // Fallback se algum link do Idealista falhou no browser
+  const processedUrls = new Set(fetchedListings.map(l => l.link));
+  for (const rawUrl of idealistaUrls) {
+    if (!processedUrls.has(rawUrl)) {
+      try {
+        const fallback = await fetchDirectListingFromUrl(
+          rawUrl,
+          rawUrls.length === 1 ? { title, price, location } : {},
+          client.location
+        );
+        if (fallback) fetchedListings.push(fallback);
+      } catch (fErr) {}
+    }
+  }
+
+  if (fetchedListings.length === 0) {
+    return res.status(400).json({ error: 'Não foi possível extrair nenhum imóvel dos links fornecidos.' });
+  }
+
+  const { addedCount, updatedCount } = clientManager.saveListings(fetchedListings, client_id, false);
+  res.json({
+    success: true,
+    total_found: fetchedListings.length,
+    added_new: addedCount,
+    updated: updatedCount,
+    listings: clientManager.getListings(client_id)
+  });
+});
+
+app.post('/api/listings/enrich/:clientId', async (req, res) => {
+  const { clientId } = req.params;
+  const client = clientManager.getClient(clientId);
+  if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+  const listings = clientManager.getListings(clientId);
+  const incomplete = listings.filter(l => 
+    !l.title || l.title === l.id || !l.price || l.price === 'Consultar €' || !l.photos || l.photos.length === 0
+  );
+
+  if (incomplete.length === 0) {
+    return res.json({ success: true, enriched: 0, message: 'Todos os imóveis já contêm informações completas!' });
+  }
+
+  const idealistaUrls = incomplete.filter(l => l.link && l.link.includes('idealista.pt')).map(l => l.link);
+  const otherListings = incomplete.filter(l => !l.link || !l.link.includes('idealista.pt'));
+
+  const enrichedListings = [];
+
+  if (idealistaUrls.length > 0) {
+    try {
+      const browserResults = await fetchDirectListingWithBrowser(idealistaUrls, client.location);
+      if (Array.isArray(browserResults)) {
+        enrichedListings.push(...browserResults);
+      }
+    } catch (e) {
+      console.warn('Aviso ao enriquecer Idealista via browser:', e.message);
+    }
+  }
+
+  for (const item of otherListings) {
+    if (item.link) {
+      try {
+        const fullData = await fetchDirectListingFromUrl(item.link, {}, client.location);
+        if (fullData) {
+          fullData.id = item.id;
+          enrichedListings.push(fullData);
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (enrichedListings.length > 0) {
+    clientManager.saveListings(enrichedListings, clientId, false);
+  }
+
+  res.json({
+    success: true,
+    enriched: enrichedListings.length,
+    listings: clientManager.getListings(clientId),
+    message: `🎉 ${enrichedListings.length} imóveis atualizados com sucesso!`
+  });
 });
 
 const { calculateMatchScore, rankListingsForClient } = require('./recommendationEngine');
@@ -414,6 +552,38 @@ app.post('/api/drive/set-webhook', async (req, res) => {
   }
 });
 
+app.get('/api/drive/sync-master-clients', async (req, res) => {
+  try {
+    const cloudClients = await googleDriveService.fetchMasterClients();
+    if (cloudClients && Array.isArray(cloudClients) && cloudClients.length > 0) {
+      clientManager.saveAllClients(cloudClients);
+      return res.json({
+        success: true,
+        count: cloudClients.length,
+        clients: clientManager.getClients(),
+        message: `🎉 ${cloudClients.length} clientes sincronizados da folha Master da Google Drive!`
+      });
+    }
+    res.json({ success: true, count: 0, clients: clientManager.getClients() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/drive/push-all-clients', async (req, res) => {
+  try {
+    const allClients = clientManager.getClients();
+    const count = await googleDriveService.saveMasterClientsBulk(allClients);
+    res.json({
+      success: true,
+      count,
+      message: `🎉 ${count} clientes enviados para a folha Master da Google Drive!`
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/drive/client-status/:clientId', async (req, res) => {
   try {
     const client = clientManager.getClient(req.params.clientId);
@@ -465,13 +635,12 @@ app.post('/api/drive/create-word-doc', async (req, res) => {
 
     const listings = clientManager.getListings(client_id, 'enviado');
     const targetListings = listings.length > 0 ? listings : clientManager.getListings(client_id);
-    if (!targetListings.length) return res.status(400).json({ error: 'Nenhum imóvel disponível para o relatório' });
 
     let folder = null;
     if (!googleDriveService.webhookUrl) {
       folder = await googleDriveService.findOrCreateClientFolder(client.name);
     }
-    const docResult = await googleDriveService.createClientWordSummary(client, targetListings, folder ? folder.folderId : null);
+    const docResult = await googleDriveService.createClientWordSummary(client, targetListings || [], folder ? folder.folderId : null);
 
     res.json({ success: true, folder, docResult });
   } catch (err) {
@@ -576,6 +745,47 @@ app.post('/api/visits/google-sync', async (req, res) => {
     res.json({ success: true, result });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ── DATA PERSISTENCE, BACKUP & BATCH SYNC ──────────────────────────────────
+app.get('/api/backup/export', (req, res) => {
+  try {
+    const backup = clientManager.getFullBackup();
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="SURE_Backup_${new Date().toISOString().slice(0, 10)}.json"`);
+    res.json(backup);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao gerar backup: ' + err.message });
+  }
+});
+
+app.post('/api/backup/restore', (req, res) => {
+  try {
+    const backupData = req.body;
+    const ok = clientManager.restoreFullBackup(backupData);
+    if (ok) {
+      res.json({
+        success: true,
+        message: 'Backup restaurado com sucesso!',
+        clients_count: clientManager.getClients().length,
+        listings_count: clientManager.getListings().length
+      });
+    } else {
+      res.status(400).json({ error: 'Ficheiro de backup inválido ou vazio.' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao restaurar backup: ' + err.message });
+  }
+});
+
+app.post('/api/sync-batch', (req, res) => {
+  try {
+    const batch = req.body;
+    const result = clientManager.syncBatchData(batch);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Erro ao sincronizar dados em lote: ' + err.message });
   }
 });
 

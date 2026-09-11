@@ -1,88 +1,143 @@
 const { resolveIdealistaLocation } = require('./geoResolver');
 
-const ZONE_BENCHMARKS = [
-  // ── MATOSINHOS & GRANDE PORTO LITORAL (Média 2025/2026: 2.950 €/m²) ──
-  { match: /\b(le[cç]a\s*da\s*palmeira|matosinhos\s*sul)\b/i, name: 'Leça da Palmeira / Matosinhos Sul', m2: 3400 },
-  { match: /\b(senhora\s*da\s*hora|s[aã]o\s*mamede\s*de\s*infesta|s\.\s*mamede)\b/i, name: 'Senhora da Hora / S. Mamede (Matosinhos)', m2: 2850 },
-  { match: /\b(cust[oó]ias|guif[oõ]es|lavra|perafita|santa\s*cruz\s*do\s*bispo|sendim|bou[cç]as)\b/i, name: 'Custóias / Guifões / Lavra (Matosinhos)', m2: 2500 },
-  { match: /\bmatosinhos\b/i, name: 'Matosinhos (Concelho)', m2: 2950 },
-
-  // ── PORTO CONCELHO (Média 2025/2026: 3.500 €/m²) ──
-  { match: /\b(foz|foz\s*do\s*douro|nevogilde|aldoar)\b/i, name: 'Porto (Foz / Aldoar)', m2: 4400 },
-  { match: /\b(boavista|lordelo\s*do\s*ouro|massarelos)\b/i, name: 'Porto (Boavista / Massarelos)', m2: 3900 },
-  { match: /\b(cedofeita|santo\s*ildefonso|miragaia|s[aã]o\s*nicolau|vit[oó]ria|baixa\s*do\s*porto|baixa\s*porto)\b/i, name: 'Porto Centro Histórico', m2: 3650 },
-  { match: /\b(bonfim|campanh[aã])\b/i, name: 'Porto (Bonfim / Campanhã)', m2: 3100 },
-  { match: /\b(paranhos|ramalde|areosa)\b/i, name: 'Porto (Paranhos / Ramalde)', m2: 3250 },
-  { match: /\bporto\b/i, name: 'Porto (Concelho)', m2: 3500 },
-
-  // ── VILA NOVA DE GAIA ──
-  { match: /\b(canidelo|madalena|afurada|valadares|praia\s*de\s*lavadores|lavadores)\b/i, name: 'Gaia Litoral / Canidelo', m2: 2950 },
-  { match: /\b(mafamude|vilar\s*do\s*para[ií]so|santa\s*marinha|centro\s*de\s*gaia)\b/i, name: 'Gaia Centro / Mafamude', m2: 2550 },
-  { match: /\b(gaia|vila\s*nova\s*de\s*gaia)\b/i, name: 'Vila Nova de Gaia', m2: 2450 },
-
-  // ── MAIA & VALE DO SOUSA ──
-  { match: /\b(cidade\s*da\s*maia|moreira\s*da\s*maia|castelo\s*da\s*maia)\b/i, name: 'Maia Centro', m2: 2350 },
-  { match: /\b([aá]guas\s*santas|pedrou[cç]os|milheir[oó]s)\b/i, name: 'Águas Santas / Maia', m2: 2100 },
-  { match: /\bmaia\b/i, name: 'Maia (Concelho)', m2: 2250 },
-  { match: /\b(rio\s*tinto|gondomar)\b/i, name: 'Rio Tinto / Gondomar', m2: 2050 },
-  { match: /\b(valongo|ermesinde)\b/i, name: 'Valongo / Ermesinde', m2: 1950 },
-
-  // ── LISBOA CONCELHO (Média 2025/2026: 5.100 €/m²) ──
-  { match: /\b(chiado|pr[ií]ncipe\s*real|baixa\s*de\s*lisboa|baixa\s*pombalina|miseric[oó]rdia|santo\s*ant[oó]nio)\b/i, name: 'Lisboa Prime (Chiado / Baixa)', m2: 6800 },
-  { match: /\b(estrela|lapa|campo\s*de\s*ourique|bel[eé]m|restelo)\b/i, name: 'Lisboa (Estrela / Belém)', m2: 5900 },
-  { match: /\b(avenidas\s*novas|alvalade|parque\s*das\s*na[cç][oõ]es|expo)\b/i, name: 'Lisboa (Avenidas Novas / Expo)', m2: 5400 },
-  { match: /\b(arroios|s[aã]o\s*vicente|penha\s*de\s*fran[cç]a|marvila|beato|gra[cç]a|alc[aâ]ntara)\b/i, name: 'Lisboa (Arroios / S. Vicente)', m2: 4400 },
-  { match: /\b(benfica|s[aã]o\s*domingos\s*de\s*benfica|carnide|lumiar|telheiras|ajuda)\b/i, name: 'Lisboa Residencial (Benfica / Lumiar)', m2: 3900 },
-  { match: /\blisboa\b/i, name: 'Lisboa (Concelho)', m2: 5100 },
-
-  // ── GRANDE LISBOA & MARGEM SUL ──
-  { match: /\b(cascais|estoril|carcavelos|parede|s[aã]o\s*pedro\s*do\s*estoril)\b/i, name: 'Cascais / Estoril', m2: 5200 },
-  { match: /\b(oeiras|pa[cç]o\s*de\s*arcos|caxias|alg[eé]s)\b/i, name: 'Oeiras / Algés', m2: 3950 },
-  { match: /\b(sintra|amadora|odivelas|queluz|mem\s*martins|cac[eé]m|massam[aá])\b/i, name: 'Linha de Sintra / Amadora / Odivelas', m2: 2400 },
-  { match: /\b(almada|costa\s*da\s*caparica|charneca|seixal|set[uú]bal)\b/i, name: 'Margem Sul (Almada / Seixal)', m2: 2700 },
+const CONCELHO_BENCHMARKS = {
+  // ── BRAGA (Média 2025/2026: 1.988 - 2.250 €/m²) ──
+  braga: [
+    { match: /\b(s[aã]o\s*v[ií]tor|são\s*victor)\b/i, name: 'São Vítor (Braga)', m2: 2250 },
+    { match: /\b(s[aã]o\s*vicente)\b/i, name: 'São Vicente (Braga)', m2: 2200 },
+    { match: /\b(gualtar|nogueir[oó]|ten[oõ]es)\b/i, name: 'Nogueiró / Gualtar (Braga)', m2: 2350 },
+    { match: /\b(lama[cç][aã]es|frai[aã]o)\b/i, name: 'Lamaçães / Fraião (Braga)', m2: 2300 },
+    { match: /\b(frossos|dume|real|semelhe)\b/i, name: 'Real / Frossos (Braga)', m2: 1850 },
+    { match: /\b(maximinos|cividade|s[eé]\s*de\s*braga|freguesia\s*da\s*s[eé]|braga\s*centro|s[aã]o\s*l[aá]zaro)\b/i, name: 'Sé / Maximinos / S. Lázaro (Braga Centro)', m2: 2100 },
+    { match: /\b(ferreiros|gondizalves)\b/i, name: 'Ferreiros (Braga)', m2: 1700 },
+    { match: /\b(lomar|arcos\s*braga)\b/i, name: 'Lomar (Braga)', m2: 1650 },
+    { match: /\b(palmeira|ada[uú]fe)\b/i, name: 'Palmeira / Adaúfe (Braga)', m2: 1550 },
+    { match: /\b(celeir[oó]s|aveleda|tadim|cabreiros|merelim|mire\s*de\s*tib[aã]es|padim|tib[aã]es|ruilhe)\b/i, name: 'Celeirós / Periferia de Braga', m2: 1500 },
+    { match: /.*/, name: 'Braga (Concelho)', m2: 1988 }
+  ],
 
   // ── VILA NOVA DE FAMALICÃO (Média 2025/2026: 1.934 €/m²) ──
-  { match: /\b(famalic[aã]o\s*centro|calend[aá]rio|antas\s*famalic[aã]o)\b/i, name: 'Famalicão Centro / Calendário', m2: 2200 },
-  { match: /\b(joane|riba\s*d['\s]*ave|brufe|lousado)\b/i, name: 'Joane / Riba d\'Ave (Famalicão)', m2: 1750 },
-  { match: /\b(louro|arnoso|pedome|del[aã]es|bairro\s*famalic[aã]o|gavi[aã]o|landim|ruiv[aã]es|seide|avidos|caval[oõ]es|esmeriz|mogege|requi[aã]o|vermoim|vilarinho)\b/i, name: 'Louro / Freguesias de Famalicão', m2: 1550 },
-  { match: /\b(famalic[aã]o|v\.?\s*n\.?\s*famalic[aã]o)\b/i, name: 'Vila Nova de Famalicão', m2: 1934 },
-
-  // ── BRAGA (Média 2025/2026: 1.988 €/m²) ──
-  { match: /\b(s[aã]o\s*v[ií]tor|são\s*victor)\b/i, name: 'São Vítor (Braga)', m2: 2250 },
-  { match: /\b(gualtar|nogueir[oó]|ten[oõ]es)\b/i, name: 'Nogueiró / Gualtar (Braga)', m2: 2350 },
-  { match: /\b(lama[cç][aã]es|frai[aã]o)\b/i, name: 'Lamaçães / Fraião (Braga)', m2: 2300 },
-  { match: /\b(frossos|dume|freguesia\s*de\s*real)\b/i, name: 'Real / Frossos (Braga)', m2: 1850 },
-  { match: /\b(maximinos|cividade|s[eé]\s*de\s*braga|freguesia\s*da\s*s[eé]|braga\s*centro)\b/i, name: 'Sé / Maximinos (Braga Centro)', m2: 2050 },
-  { match: /\b(ferreiros|gondizalves)\b/i, name: 'Ferreiros (Braga)', m2: 1700 },
-  { match: /\b(lomar|arcos\s*braga)\b/i, name: 'Lomar (Braga)', m2: 1650 },
-  { match: /\b(palmeira|ada[uú]fe)\b/i, name: 'Palmeira / Adaúfe (Braga)', m2: 1550 },
-  { match: /\b(celeir[oó]s|aveleda|tadim|cabreiros|merelim|mire\s*de\s*tib[aã]es|padim|semelhe|tib[aã]es)\b/i, name: 'Celeirós / Periferia de Braga', m2: 1500 },
-  { match: /\bbraga\b/i, name: 'Braga (Concelho)', m2: 1988 },
+  famalicao: [
+    { match: /\b(famalic[aã]o\s*centro|calend[aá]rio|antas)\b/i, name: 'Famalicão Centro / Calendário', m2: 2200 },
+    { match: /\b(joane|riba\s*d['\s]*ave|brufe|lousado)\b/i, name: 'Joane / Riba d\'Ave (Famalicão)', m2: 1750 },
+    { match: /\b(louro|arnoso|pedome|del[aã]es|bairro\s*famalic[aã]o|gavi[aã]o|landim|ruiv[aã]es|seide|avidos|caval[oõ]es|esmeriz|mogege|requi[aã]o|vermoim|vilarinho|vale\s*s[aã]o\s*cosme|gondifelos)\b/i, name: 'Louro / Freguesias de Famalicão', m2: 1550 },
+    { match: /.*/, name: 'Vila Nova de Famalicão', m2: 1934 }
+  ],
 
   // ── GUIMARÃES (Média 2025/2026: 1.855 €/m²) ──
-  { match: /\b(azur[eé]m|creixomil|urgezes|costa\s*guimar[aã]es|mes[aã]o\s*frio)\b/i, name: 'Guimarães Centro Urbano', m2: 2150 },
-  { match: /\b(taipas|caldas\s*das\s*taipas|sande)\b/i, name: 'Caldas das Taipas (Guimarães)', m2: 1750 },
-  { match: /\b(guardizela|brito|moreira\s*de\s*c[oó]negos|ronfe|silvares|lordelo|serzedelo|polvoreira|s[aã]o\s*torcato)\b/i, name: 'Guardizela / Freguesias de Guimarães', m2: 1600 },
-  { match: /\bguimar[aã]es\b/i, name: 'Guimarães', m2: 1855 },
+  guimaraes: [
+    { match: /\b(azur[eé]m|creixomil|urgezes|costa\s*guimar[aã]es|mes[aã]o\s*frio|centro)\b/i, name: 'Guimarães Centro Urbano', m2: 2150 },
+    { match: /\b(taipas|caldas\s*das\s*taipas|sande)\b/i, name: 'Caldas das Taipas (Guimarães)', m2: 1750 },
+    { match: /\b(guardizela|brito|moreira\s*de\s*c[oó]negos|ronfe|silvares|lordelo|serzedelo|polvoreira|s[aã]o\s*torcato)\b/i, name: 'Guardizela / Freguesias de Guimarães', m2: 1600 },
+    { match: /.*/, name: 'Guimarães', m2: 1855 }
+  ],
 
   // ── BARCELOS (Média 2025/2026: 1.816 €/m²) ──
-  { match: /\b(barcelos\s*centro|barcelinhos|arcozelo\s*barcelos)\b/i, name: 'Barcelos Centro', m2: 1950 },
-  { match: /\b(viatodos|martim|galegos|gilmonde|manhente|abade|alheira)\b/i, name: 'Freguesias de Barcelos', m2: 1550 },
-  { match: /\bbarcelos\b/i, name: 'Barcelos', m2: 1816 },
+  barcelos: [
+    { match: /\b(barcelos\s*centro|barcelinhos|arcozelo\s*barcelos)\b/i, name: 'Barcelos Centro', m2: 1950 },
+    { match: /\b(viatodos|martim|galegos|gilmonde|manhente|abade|alheira)\b/i, name: 'Freguesias de Barcelos', m2: 1550 },
+    { match: /.*/, name: 'Barcelos', m2: 1816 }
+  ],
 
-  // ── LITORAL NORTE & MINHO ──
-  { match: /\b(p[oó]voa\s*de\s*varzim|p[oó]voa|aver-o-mar|agucadoura)\b/i, name: 'Póvoa de Varzim', m2: 2550 },
-  { match: /\b(vila\s*do\s*conde|mindelo|[aá]rvore|azurara)\b/i, name: 'Vila do Conde', m2: 2450 },
-  { match: /\b(esposende|f[aã]o|ap[uú]lia|marinhas)\b/i, name: 'Esposende / Apúlia', m2: 2350 },
-  { match: /\b(viana\s*do\s*castelo|viana|areosa|meadela|darque|afife)\b/i, name: 'Viana do Castelo', m2: 1950 },
-  { match: /\b(amares|dornelas|figueiredo|caires|bouro|caldelas\s*amares)\b/i, name: 'Amares', m2: 1450 },
-  { match: /\b(prado|soutelo)\b/i, name: 'Vila de Prado / Soutelo', m2: 1650 },
-  { match: /\b(vila\s*verde|cerv[aã]es|moure|barbudo|lage|pico)\b/i, name: 'Vila Verde', m2: 1500 },
-  { match: /\b(santo\s*tirso|aves|vila\s*das\s*aves|rebord[oõ]es)\b/i, name: 'Santo Tirso / Aves', m2: 1550 },
-  { match: /\btrofa\b/i, name: 'Trofa', m2: 1650 },
-  { match: /\bvizela\b/i, name: 'Vizela', m2: 1550 },
-  { match: /\bfafe\b/i, name: 'Fafe', m2: 1450 }
-];
+  // ── MINHO / LITORAL NORTE ──
+  minho_litoral: [
+    { match: /\b(p[oó]voa\s*de\s*varzim|p[oó]voa|aver-o-mar|agucadoura)\b/i, name: 'Póvoa de Varzim', m2: 2550 },
+    { match: /\b(vila\s*do\s*conde|mindelo|[aá]rvore|azurara)\b/i, name: 'Vila do Conde', m2: 2450 },
+    { match: /\b(esposende|f[aã]o|ap[uú]lia|marinhas)\b/i, name: 'Esposende / Apúlia', m2: 2350 },
+    { match: /\b(viana\s*do\s*castelo|viana|areosa|meadela|darque|afife)\b/i, name: 'Viana do Castelo', m2: 1950 },
+    { match: /\b(amares|dornelas|figueiredo|caires|bouro|caldelas\s*amares)\b/i, name: 'Amares', m2: 1450 },
+    { match: /\b(prado|soutelo)\b/i, name: 'Vila de Prado / Soutelo', m2: 1650 },
+    { match: /\b(vila\s*verde|cerv[aã]es|moure|barbudo|lage|pico)\b/i, name: 'Vila Verde', m2: 1500 },
+    { match: /\b(santo\s*tirso|aves|vila\s*das\s*aves|rebord[oõ]es)\b/i, name: 'Santo Tirso / Aves', m2: 1550 },
+    { match: /\btrofa\b/i, name: 'Trofa', m2: 1650 },
+    { match: /\bvizela\b/i, name: 'Vizela', m2: 1550 },
+    { match: /\bfafe\b/i, name: 'Fafe', m2: 1450 },
+    { match: /.*/, name: 'Minho / Litoral Norte', m2: 1750 }
+  ],
+
+  // ── PORTO CONCELHO (Média 2025/2026: 3.500 €/m²) ──
+  porto: [
+    { match: /\b(foz|foz\s*do\s*douro|nevogilde|aldoar)\b/i, name: 'Porto (Foz / Aldoar)', m2: 4400 },
+    { match: /\b(boavista|lordelo\s*do\s*ouro|massarelos)\b/i, name: 'Porto (Boavista / Massarelos)', m2: 3900 },
+    { match: /\b(cedofeita|santo\s*ildefonso|miragaia|s[aã]o\s*nicolau|vit[oó]ria|baixa\s*do\s*porto|baixa\s*porto)\b/i, name: 'Porto Centro Histórico', m2: 3650 },
+    { match: /\b(bonfim|campanh[aã])\b/i, name: 'Porto (Bonfim / Campanhã)', m2: 3100 },
+    { match: /\b(paranhos|ramalde|areosa)\b/i, name: 'Porto (Paranhos / Ramalde)', m2: 3250 },
+    { match: /.*/, name: 'Porto (Concelho)', m2: 3500 }
+  ],
+
+  // ── MATOSINHOS & GRANDE PORTO LITORAL (Média 2025/2026: 2.950 €/m²) ──
+  matosinhos: [
+    { match: /\b(le[cç]a\s*da\s*palmeira|matosinhos\s*sul)\b/i, name: 'Leça da Palmeira / Matosinhos Sul', m2: 3400 },
+    { match: /\b(senhora\s*da\s*hora|s[aã]o\s*mamede\s*de\s*infesta|s\.\s*mamede)\b/i, name: 'Senhora da Hora / S. Mamede (Matosinhos)', m2: 2850 },
+    { match: /\b(cust[oó]ias|guif[oõ]es|lavra|perafita|santa\s*cruz\s*do\s*bispo|sendim|bou[cç]as)\b/i, name: 'Custóias / Guifões / Lavra (Matosinhos)', m2: 2500 },
+    { match: /.*/, name: 'Matosinhos (Concelho)', m2: 2950 }
+  ],
+
+  // ── VILA NOVA DE GAIA ──
+  gaia: [
+    { match: /\b(canidelo|madalena|afurada|valadares|praia\s*de\s*lavadores|lavadores)\b/i, name: 'Gaia Litoral / Canidelo', m2: 2950 },
+    { match: /\b(mafamude|vilar\s*do\s*para[ií]so|santa\s*marinha|centro\s*de\s*gaia)\b/i, name: 'Gaia Centro / Mafamude', m2: 2550 },
+    { match: /.*/, name: 'Vila Nova de Gaia', m2: 2450 }
+  ],
+
+  // ── MAIA, GONDOMAR & VALONGO ──
+  maia: [
+    { match: /\b(cidade\s*da\s*maia|moreira\s*da\s*maia|castelo\s*da\s*maia)\b/i, name: 'Maia Centro', m2: 2350 },
+    { match: /\b([aá]guas\s*santas|pedrou[cç]os|milheir[oó]s)\b/i, name: 'Águas Santas / Maia', m2: 2100 },
+    { match: /\b(rio\s*tinto|gondomar)\b/i, name: 'Rio Tinto / Gondomar', m2: 2050 },
+    { match: /\b(valongo|ermesinde)\b/i, name: 'Valongo / Ermesinde', m2: 1950 },
+    { match: /.*/, name: 'Maia (Concelho)', m2: 2250 }
+  ],
+
+  // ── LISBOA CONCELHO (Média 2025/2026: 5.100 €/m²) ──
+  lisboa: [
+    { match: /\b(chiado|pr[ií]ncipe\s*real|baixa\s*de\s*lisboa|baixa\s*pombalina|miseric[oó]rdia|santo\s*ant[oó]nio)\b/i, name: 'Lisboa Prime (Chiado / Baixa)', m2: 6800 },
+    { match: /\b(estrela|lapa|campo\s*de\s*ourique|bel[eé]m|restelo)\b/i, name: 'Lisboa (Estrela / Belém)', m2: 5900 },
+    { match: /\b(avenidas\s*novas|alvalade|parque\s*das\s*na[cç][oõ]es|expo)\b/i, name: 'Lisboa (Avenidas Novas / Expo)', m2: 5400 },
+    { match: /\b(arroios|penha\s*de\s*fran[cç]a|marvila|beato|gra[cç]a|alc[aâ]ntara|s[aã]o\s*vicente\s*de\s*fora)\b/i, name: 'Lisboa (Arroios / Graça)', m2: 4400 },
+    { match: /\b(benfica|s[aã]o\s*domingos\s*de\s*benfica|carnide|lumiar|telheiras|ajuda)\b/i, name: 'Lisboa Residencial (Benfica / Lumiar)', m2: 3900 },
+    { match: /\b(cascais|estoril|carcavelos|parede|s[aã]o\s*pedro\s*do\s*estoril)\b/i, name: 'Cascais / Estoril', m2: 5200 },
+    { match: /\b(oeiras|pa[cç]o\s*de\s*arcos|caxias|alg[eé]s)\b/i, name: 'Oeiras / Algés', m2: 3950 },
+    { match: /\b(sintra|amadora|odivelas|queluz|mem\s*martins|cac[eé]m|massam[aá])\b/i, name: 'Linha de Sintra / Amadora / Odivelas', m2: 2400 },
+    { match: /\b(almada|costa\s*da\s*caparica|charneca|seixal|set[uú]bal)\b/i, name: 'Margem Sul (Almada / Seixal)', m2: 2700 },
+    { match: /.*/, name: 'Lisboa (Concelho)', m2: 5100 }
+  ]
+};
+
+function detectConcelho(text) {
+  const t = (text || '').toLowerCase();
+  if (/\b(braga|s[aã]o\s*v[ií]tor|s[aã]o\s*victor|s[aã]o\s*vicente|gualtar|nogueir[oó]|ten[oõ]es|lama[cç][aã]es|frai[aã]o|frossos|dume|real|maximinos|cividade|s[eé]\s*de\s*braga|ferreiros|lomar|palmeira|celeir[oó]s)\b/i.test(t) && !/\b(lisboa|porto|famalic|matosinhos|gaia)\b/i.test(t)) {
+    return 'braga';
+  }
+  if (/\b(famalic[aã]o|v\.?\s*n\.?\s*famalic[aã]o|calend[aá]rio|antas|louro|arnoso|pedome|del[aã]es|landim|requi[aã]o|vermoim|joane|riba\s*d['\s]*ave|gondifelos)\b/i.test(t)) {
+    return 'famalicao';
+  }
+  if (/\b(guimar[aã]es|azur[eé]m|creixomil|urgezes|taipas|ronfe|silvares|guardizela)\b/i.test(t)) {
+    return 'guimaraes';
+  }
+  if (/\b(barcelos|barcelinhos|arcozelo\s*barcelos|viatodos)\b/i.test(t)) {
+    return 'barcelos';
+  }
+  if (/\b(matosinhos|le[cç]a\s*da\s*palmeira|senhora\s*da\s*hora|s[aã]o\s*mamede\s*de\s*infesta|cust[oó]ias|guif[oõ]es|lavra|perafita)\b/i.test(t)) {
+    return 'matosinhos';
+  }
+  if (/\b(gaia|vila\s*nova\s*de\s*gaia|canidelo|mafamude|madalena|afurada|valadares|lavadores)\b/i.test(t)) {
+    return 'gaia';
+  }
+  if (/\b(porto|foz\s*do\s*douro|boavista|cedofeita|bonfim|campanh[aã]|paranhos|ramalde|miragaia)\b/i.test(t) && !/\b(braga|famalic|gaia|matosinhos)\b/i.test(t)) {
+    return 'porto';
+  }
+  if (/\b(maia|rio\s*tinto|gondomar|valongo|ermesinde|[aá]guas\s*santas)\b/i.test(t)) {
+    return 'maia';
+  }
+  if (/\b(p[oó]voa\s*de\s*varzim|vila\s*do\s*conde|esposende|viana\s*do\s*castelo|amares|vila\s*verde|santo\s*tirso|trofa|vizela|fafe)\b/i.test(t)) {
+    return 'minho_litoral';
+  }
+  if (/\b(lisboa|chiado|arroios|avenidas\s*novas|expo|cascais|estoril|oeiras|sintra|amadora|odivelas|almada|seixal|set[uú]bal)\b/i.test(t)) {
+    return 'lisboa';
+  }
+  return null;
+}
 
 function getZoneBenchmark(listing, client = {}) {
   const listingText = typeof listing === 'string'
@@ -95,26 +150,58 @@ function getZoneBenchmark(listing, client = {}) {
   const listingLower = listingText.toLowerCase();
   const clientLower = clientLoc.toLowerCase();
 
-  // 1. Tentar encontrar a freguesia/zona específica no anúncio
-  for (const item of ZONE_BENCHMARKS) {
-    if (item.match.test(listingLower)) {
-      return item;
+  // 1. Detectar primeiro o concelho a partir do anúncio ou do cliente
+  // Se o anúncio ou cliente contiver Braga -> concelho = 'braga'
+  // Se o anúncio ou cliente contiver Famalicão -> concelho = 'famalicao'
+  const concelho = detectConcelho(listingText) || detectConcelho(clientLoc);
+
+  if (concelho && CONCELHO_BENCHMARKS[concelho]) {
+    const list = CONCELHO_BENCHMARKS[concelho];
+    for (const item of list) {
+      if (item.match.test(listingLower) || item.match.test(clientLower)) {
+        return item;
+      }
     }
   }
 
-  // 2. Se não encontrou no anúncio, tentar pela localização do cliente
-  for (const item of ZONE_BENCHMARKS) {
-    if (item.match.test(clientLower)) {
-      return item;
+  // 2. Se não detectou concelho específico, testar em cada grupo de concelhos
+  for (const cKey of Object.keys(CONCELHO_BENCHMARKS)) {
+    // Ignorar Lisboa a menos que o texto mencione explicitamente Lisboa
+    if (cKey === 'lisboa' && !listingLower.includes('lisboa') && !clientLower.includes('lisboa')) {
+      continue;
+    }
+    const list = CONCELHO_BENCHMARKS[cKey];
+    for (const item of list) {
+      if (item.match !== /.*/ && (item.match.test(listingLower) || item.match.test(clientLower))) {
+        return item;
+      }
     }
   }
 
-  // 3. Fallback inteligente
+  // 3. Fallback inteligente com base no local do cliente
   if (clientLoc && clientLoc.trim()) {
-    return { name: clientLoc.trim(), m2: 2500 };
+    const fallbackM2 = detectConcelho(clientLoc) === 'braga' ? 1988
+      : detectConcelho(clientLoc) === 'famalicao' ? 1934
+      : detectConcelho(clientLoc) === 'porto' ? 3500
+      : detectConcelho(clientLoc) === 'lisboa' ? 5100
+      : 2200;
+    return { name: clientLoc.trim(), m2: fallbackM2 };
   }
 
   return { name: 'Média de Mercado', m2: 2200 };
+}
+
+function parseAreaNumber(areaStr) {
+  if (!areaStr) return 0;
+  const clean = String(areaStr).replace(/[^\d.,]/g, '').trim();
+  if (/,\d{1,2}$/.test(clean)) {
+    return Math.round(parseFloat(clean.replace(/\./g, '').replace(',', '.'))) || 0;
+  }
+  if (/\.\d{1,2}$/.test(clean)) {
+    return Math.round(parseFloat(clean)) || 0;
+  }
+  const digits = clean.replace(/[^\d]/g, '');
+  return parseInt(digits, 10) || 0;
 }
 
 function analyzePriceM2(listing, client) {
@@ -123,7 +210,7 @@ function analyzePriceM2(listing, client) {
     m2Val = parseInt(String(listing.price_m2).replace(/[^\d]/g, ''), 10) || 0;
   }
   if (!m2Val && listing.price_num > 0 && listing.area) {
-    const areaNum = parseInt(String(listing.area).replace(/[^\d]/g, ''), 10) || 0;
+    const areaNum = parseAreaNumber(listing.area);
     if (areaNum > 0) m2Val = Math.round(listing.price_num / areaNum);
   }
 
@@ -277,7 +364,7 @@ function calculateMatchScore(client, listing) {
 
   // ── ÁREA MÍNIMA (m²) ───────────────────────────────────────────────────────
   const clientMinArea = Number(client.min_area || client.min_surface || 0);
-  const listingAreaNum = parseInt(String(listing.area || '').replace(/[^\d]/g, ''), 10) || 0;
+  const listingAreaNum = parseAreaNumber(listing.area);
   if (clientMinArea > 0) {
     if (listingAreaNum > 0) {
       if (listingAreaNum >= clientMinArea) {

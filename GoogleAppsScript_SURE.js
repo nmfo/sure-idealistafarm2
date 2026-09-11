@@ -20,7 +20,6 @@ function doPost(e) {
     if (action === 'create_folder') return responseJSON({ success: true, result: createClientFullKit(data, rootId) });
     if (action === 'record_sent') return responseJSON({ success: true, result: recordSentProperty(data, rootId) });
     if (action === 'create_word_doc') return responseJSON({ success: true, result: createWordDoc(data, rootId) });
-    if (action === 'schedule_visit' || action === 'create_calendar_event') return responseJSON({ success: true, result: createCalendarVisitEvent(data) });
 
     return responseJSON({ success: false, error: 'Ação desconhecida: ' + action });
   } catch (err) {
@@ -297,39 +296,5 @@ function createWordDoc(data, rootFolderId) {
     doc_title: doc.getName(),
     doc_url: doc.getUrl(),
     folder_url: clientFolder.getUrl()
-  };
-}
-
-function createCalendarVisitEvent(data) {
-  const visit = data.visit || data;
-  const title = visit.title || `🏡 Visita Imóvel - ${visit.client_name || 'Cliente'}`;
-  const startTime = new Date(visit.start_time || visit.date);
-  const endTime = new Date(visit.end_time || (startTime.getTime() + (parseInt(visit.duration_minutes || 60, 10) * 60 * 1000)));
-
-  const location = visit.location || visit.address || '';
-  let description = `SURE. REAL ESTATE — AGENDAMENTO DE VISITA\n`;
-  description += `──────────────────────────────────────────────\n`;
-  if (visit.client_name) description += `👤 Cliente: ${visit.client_name}\n`;
-  if (visit.client_phone) description += `📞 Contacto Cliente: ${visit.client_phone}\n`;
-  if (visit.consultant_name) description += `💼 Consultor: ${visit.consultant_name}\n`;
-  if (visit.listing_title) description += `🏠 Imóvel: ${visit.listing_title}\n`;
-  if (visit.listing_price) description += `💶 Preço: ${visit.listing_price}\n`;
-  if (visit.listing_url) description += `🔗 Link do Imóvel: ${visit.listing_url}\n`;
-  if (visit.notes) description += `📝 Notas / Acessos: ${visit.notes}\n`;
-  description += `──────────────────────────────────────────────\n`;
-  description += `Criado via SURE. IdealistaFarm`;
-
-  const calendar = CalendarApp.getDefaultCalendar();
-  const event = calendar.createEvent(title, startTime, endTime, {
-    description: description,
-    location: location
-  });
-
-  return {
-    event_id: event.getId(),
-    title: title,
-    start_time: startTime.toISOString(),
-    end_time: endTime.toISOString(),
-    calendar_name: calendar.getName()
   };
 }

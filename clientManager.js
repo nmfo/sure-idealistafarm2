@@ -8,7 +8,6 @@ const SEED_DATA_DIR = path.join(__dirname, 'data');
 const CLIENTS_FILE = path.join(DATA_DIR, 'clients.json');
 const LISTINGS_FILE = path.join(DATA_DIR, 'listings.json');
 const CONSULTANTS_FILE = path.join(DATA_DIR, 'consultants.json');
-const VISITS_FILE = path.join(DATA_DIR, 'visits.json');
 
 const PRIORITY_LIMITS = {
   'SU': 2, // Super Urgente: 2 dias
@@ -63,10 +62,6 @@ function ensureDataFiles() {
 
   if (!fs.existsSync(LISTINGS_FILE)) {
     fs.writeFileSync(LISTINGS_FILE, JSON.stringify([], null, 2), 'utf-8');
-  }
-
-  if (!fs.existsSync(VISITS_FILE)) {
-    fs.writeFileSync(VISITS_FILE, JSON.stringify([], null, 2), 'utf-8');
   }
 }
 
@@ -389,78 +384,6 @@ class ClientManager {
 
   getScrapeStatus(clientId) {
     return activeScrapes[clientId] || null;
-  }
-
-  // ── VISITS (MARCADOR DE VISITAS / GOOGLE CALENDAR) ────────────────────────
-  getVisits(clientId = null, consultantId = null) {
-    ensureDataFiles();
-    try {
-      const data = fs.readFileSync(VISITS_FILE, 'utf-8');
-      let visits = JSON.parse(data || '[]');
-      if (clientId) {
-        visits = visits.filter(v => v.client_id === clientId);
-      }
-      if (consultantId) {
-        visits = visits.filter(v => v.consultant_id === consultantId);
-      }
-      // Ordenar por data/hora crescente
-      visits.sort((a, b) => new Date(a.start_time || a.date) - new Date(b.start_time || b.date));
-      return visits;
-    } catch (e) {
-      console.error('Erro ao ler visits.json:', e);
-      return [];
-    }
-  }
-
-  saveVisit(visitData) {
-    ensureDataFiles();
-    const visits = this.getVisits();
-    let visit = { ...visitData };
-
-    if (!visit.id) {
-      visit.id = 'visit-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-      visit.created_at = new Date().toISOString();
-      visit.status = visit.status || 'agendada';
-      visits.push(visit);
-    } else {
-      const idx = visits.findIndex(v => v.id === visit.id);
-      if (idx !== -1) {
-        visit.updated_at = new Date().toISOString();
-        visits[idx] = { ...visits[idx], ...visit };
-      } else {
-        visit.created_at = new Date().toISOString();
-        visit.status = visit.status || 'agendada';
-        visits.push(visit);
-      }
-    }
-
-    syncWrite(VISITS_FILE, visits);
-    return visit;
-  }
-
-  deleteVisit(visitId) {
-    ensureDataFiles();
-    let visits = this.getVisits();
-    const initialLen = visits.length;
-    visits = visits.filter(v => v.id !== visitId);
-    if (visits.length !== initialLen) {
-      syncWrite(VISITS_FILE, visits);
-      return true;
-    }
-    return false;
-  }
-
-  updateVisitStatus(visitId, status) {
-    ensureDataFiles();
-    const visits = this.getVisits();
-    const visit = visits.find(v => v.id === visitId);
-    if (visit) {
-      visit.status = status;
-      visit.updated_at = new Date().toISOString();
-      syncWrite(VISITS_FILE, visits);
-      return visit;
-    }
-    return null;
   }
 }
 
