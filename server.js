@@ -1006,17 +1006,18 @@ app.post('/api/drive/record-sent', async (req, res) => {
     }
 
     // Todoist Task sync (Regra 1: Feedback do Consultor em #Geral)
+    let todoistResult = null;
     if (todoistService.isConfigured()) {
       try {
         const consultants = clientManager.getConsultants();
         const consultant = consultants.find(co => co.id === client.consultant_id);
-        todoistService.createSentFeedbackTask(client, [listing], consultant).catch(tErr => {
-          console.warn('Aviso sincronização Todoist record-sent:', tErr.message);
-        });
-      } catch (tErr) {}
+        todoistResult = await todoistService.createSentFeedbackTask(client, [listing], consultant);
+      } catch (tErr) {
+        console.warn('Aviso sincronização Todoist record-sent:', tErr.message);
+      }
     }
 
-    res.json({ success: true, driveResult });
+    res.json({ success: true, driveResult, todoistResult });
   } catch (err) {
     console.error('Erro ao registar na Drive:', err.message);
     res.status(500).json({ error: err.message });

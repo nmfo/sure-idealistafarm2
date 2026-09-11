@@ -201,14 +201,34 @@ class TodoistService {
     }
     if (!client) return { success: false, reason: 'Cliente inválido' };
 
-    const consultantName = (consultant && consultant.name) ? consultant.name : (client.consultant_name || 'Consultor Responsável');
+    const consultantName = (consultant && consultant.name) ? consultant.name : (client.consultant_name || 'Consultor');
     const targetProjectName = this.config.feedback_project_name || 'Geral';
     const project = await this.findOrCreateProject(targetProjectName);
     
     let sectionId = null;
-    if (project && consultantName && consultantName !== 'Geral / Equipa SURE') {
-      const section = await this.findOrCreateSection(project.id, consultantName);
-      if (section) sectionId = section.id;
+    if (project) {
+      // 1. Tentar primeiro colocar na secção do Administrativo Responsável (ex: 'João Santos', 'Pedro Barros', 'Nuno Oliveira')
+      if (client.assistant_name && client.assistant_name !== 'Geral / Administração') {
+        const sec = await this.findOrCreateSection(project.id, client.assistant_name);
+        if (sec) sectionId = sec.id;
+      } else if (client.assistant_id) {
+        const astMap = {
+          'assistant-joao': 'João Santos',
+          'assistant-pedro': 'Pedro Barros',
+          'assistant-nuno': 'Nuno Oliveira',
+          'assistant-rui': 'Rui Rebelo'
+        };
+        if (astMap[client.assistant_id]) {
+          const sec = await this.findOrCreateSection(project.id, astMap[client.assistant_id]);
+          if (sec) sectionId = sec.id;
+        }
+      }
+
+      // 2. Fallback para a secção do Consultor
+      if (!sectionId && consultantName && consultantName !== 'Geral / Equipa SURE') {
+        const sec = await this.findOrCreateSection(project.id, consultantName);
+        if (sec) sectionId = sec.id;
+      }
     }
 
     const listingArray = Array.isArray(listings) ? listings : (listings ? [listings] : []);
@@ -219,8 +239,8 @@ class TodoistService {
       return `${idx + 1}. **${title}** ${price ? `(${price})` : ''}${link}`;
     }).join('\n');
 
-    const feedbackDays = this.config.feedback_due_days || 2;
-    const taskContent = `📞 Verificar imóveis e pedir feedback: ${client.name} (${consultantName})`;
+    const cleanConsultantName = consultantName.split(' ')[0];
+    const taskContent = `Ver casas - ${client.name} - ${cleanConsultantName}`;
     
     let taskDesc = `**Cliente:** ${client.name}\n`;
     if (client.phone) taskDesc += `**Telefone:** [${client.phone}](tel:${client.phone.replace(/\s+/g, '')})\n`;
@@ -239,9 +259,9 @@ class TodoistService {
         description: taskDesc,
         project_id: project ? project.id : undefined,
         section_id: sectionId || undefined,
-        due_string: `in ${feedbackDays} days`,
+        due_string: 'today',
         priority: 3, // P2 no Todoist
-        labels: ['feedback', 'imoveis', (consultantName || '').replace(/\s+/g, '_')]
+        labels: ['feedback', 'imoveis', (cleanConsultantName || '').replace(/\s+/g, '_')]
       };
 
       const res = await axios.post(`${TODOIST_API_BASE}/tasks`, payload, {
@@ -249,7 +269,7 @@ class TodoistService {
         timeout: 10000
       });
 
-      console.log(`✅ [Todoist] Tarefa de feedback criada em #${project ? project.name : targetProjectName} para ${consultantName} (Cliente: ${client.name})`);
+      console.log(`✅ [Todoist] Tarefa criada em #${project ? project.name : targetProjectName} (${taskContent})`);
       return { success: true, task: res.data };
     } catch (err) {
       const errMsg = err.response && err.response.data ? JSON.stringify(err.response.data) : err.message;

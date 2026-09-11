@@ -4,7 +4,7 @@
   "admin_project_name": "Administrativo",
   "feedback_project_name": "Geral",
   "feedback_due_days": 2,
-  "last_sync_at": "2026-09-11T16:33:05.526Z",
+  "last_sync_at": "2026-09-11T17:03:00.965Z",
   "created_tasks": {
     "overdue_client-daniela-costa-2_2026-09-11": 1789139905146,
     "overdue_client-filipe-fernandes-3_2026-09-11": 1789139905146,
@@ -25,5 +25,5 @@
     "overdue_client-ricardo-pinto-142_2026-09-11": 1789139905146,
     "overdue_client-vanessa-machado-146_2026-09-11": 1789139905146
   },
-  "updated_at": "2026-09-11T16:33:05.581Z"
+  "updated_at": "2026-09-11T17:03:00.970Z"
 }
