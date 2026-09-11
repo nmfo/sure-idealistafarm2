@@ -527,17 +527,6 @@ class GoogleDriveService {
     };
   }
 
-  async saveWebhookUrl(url) {
-    this.webhookUrl = (url || '').trim();
-    const dataDir = path.join(__dirname, 'data');
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    fs.writeFileSync(WEBHOOK_PATH, JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
-    this.initialized = !!this.webhookUrl;
-    return this.initialized;
-  }
-
   /**
    * Operação Completa: Regista um ou vários imóveis enviados na Drive
    */

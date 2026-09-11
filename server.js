@@ -850,9 +850,19 @@ app.post('/api/drive/push-all-clients', async (req, res) => {
   }
 });
 
+function resolveClient(clientIdOrObj) {
+  if (!clientIdOrObj) return null;
+  if (typeof clientIdOrObj === 'object' && clientIdOrObj.name) return clientIdOrObj;
+  const idStr = String(clientIdOrObj).trim();
+  const direct = clientManager.getClient(idStr);
+  if (direct) return direct;
+  const all = clientManager.getClients();
+  return all.find(c => c.id === idStr || c.zoho_id === idStr || (c.name && c.name.toLowerCase() === idStr.toLowerCase())) || null;
+}
+
 app.get('/api/drive/client-status/:clientId', async (req, res) => {
   try {
-    const client = clientManager.getClient(req.params.clientId);
+    const client = resolveClient(req.params.clientId);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
     const status = await googleDriveService.checkClientStatus(client);
     res.json({ success: true, status });
@@ -863,8 +873,8 @@ app.get('/api/drive/client-status/:clientId', async (req, res) => {
 
 app.post('/api/drive/create-client-folder', async (req, res) => {
   try {
-    const { client_id } = req.body;
-    const client = clientManager.getClient(client_id);
+    const { client_id, client: clientObj } = req.body;
+    const client = resolveClient(clientObj || client_id);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
     const result = await googleDriveService.createClientFolderOnly(client);
     res.json({ success: true, result });
@@ -875,15 +885,15 @@ app.post('/api/drive/create-client-folder', async (req, res) => {
 
 app.post('/api/drive/record-sent', async (req, res) => {
   try {
-    const { client_id, listing_id, consultant_name } = req.body;
-    const client = clientManager.getClient(client_id);
+    const { client_id, listing_id, consultant_name, client: clientObj } = req.body;
+    const client = resolveClient(clientObj || client_id);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
-    const listings = clientManager.getListings(client_id);
-    const listing = listings.find(l => l.id === listing_id);
+    const listings = clientManager.getListings(client.id || client_id);
+    const listing = listings.find(l => l.id === listing_id) || (req.body.listing && req.body.listing.title ? req.body.listing : null);
     if (!listing) return res.status(404).json({ error: 'Imóvel não encontrado' });
 
-    clientManager.updateListingStatus(listing_id, client_id, 'enviado');
+    clientManager.updateListingStatus(listing_id, client.id || client_id, 'enviado');
 
     const driveResult = await googleDriveService.recordSentProperty(client, listing, consultant_name || 'SURE Equipa');
 
@@ -932,12 +942,12 @@ app.post('/api/drive/record-sent', async (req, res) => {
 
 app.post('/api/drive/create-word-doc', async (req, res) => {
   try {
-    const { client_id } = req.body;
-    const client = clientManager.getClient(client_id);
+    const { client_id, client: clientObj } = req.body;
+    const client = resolveClient(clientObj || client_id);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
-    const listings = clientManager.getListings(client_id, 'enviado');
-    const targetListings = listings.length > 0 ? listings : clientManager.getListings(client_id);
+    const listings = clientManager.getListings(client.id || client_id, 'enviado');
+    const targetListings = listings.length > 0 ? listings : clientManager.getListings(client.id || client_id);
 
     let folder = null;
     if (!googleDriveService.webhookUrl) {

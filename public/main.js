@@ -3145,7 +3145,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await fetch('/api/drive/create-client-folder', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: currentClient.id })
+          body: JSON.stringify({ client_id: currentClient.id, client: currentClient })
         });
         const data = await res.json();
         if (data.success) {
@@ -3181,7 +3181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await fetch('/api/drive/create-word-doc', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ client_id: currentClient.id })
+          body: JSON.stringify({ client_id: currentClient.id, client: currentClient })
         });
         const data = await res.json();
         if (data.success && data.docResult) {
