@@ -1,0 +1,29 @@
+{
+  "api_token": "3b502887ef5b722dcc2d3accdaa4ee0b087e61ca",
+  "enabled": true,
+  "admin_project_name": "Administrativo",
+  "feedback_project_name": "Geral",
+  "feedback_due_days": 2,
+  "last_sync_at": "2026-09-11T16:33:05.526Z",
+  "created_tasks": {
+    "overdue_client-daniela-costa-2_2026-09-11": 1789139905146,
+    "overdue_client-filipe-fernandes-3_2026-09-11": 1789139905146,
+    "overdue_client-miguel-marinho-4_2026-09-11": 1789139905146,
+    "overdue_client-davi-castro-8_2026-09-11": 1789139905146,
+    "overdue_client-fatima-rodrigues-9_2026-09-11": 1789139905146,
+    "overdue_client-diana-oliveira-13_2026-09-11": 1789139905146,
+    "overdue_client-duarte-amaro-18_2026-09-11": 1789139905146,
+    "overdue_client-ana-costa-19_2026-09-11": 1789139905146,
+    "overdue_client-maria-jesus-cerqueira-20_2026-09-11": 1789139905146,
+    "overdue_client-karine-80_2026-09-11": 1789139905146,
+    "overdue_client-jeaneson-marenzani-81_2026-09-11": 1789139905146,
+    "overdue_client-maria-lucia-cascais-99_2026-09-11": 1789139905146,
+    "overdue_client-ricardo-carvalho-110_2026-09-11": 1789139905146,
+    "overdue_client-tiago-margarida-111_2026-09-11": 1789139905146,
+    "overdue_client-jose-marinho-rosa-maria-130_2026-09-11": 1789139905146,
+    "overdue_client-ana-moura-141_2026-09-11": 1789139905146,
+    "overdue_client-ricardo-pinto-142_2026-09-11": 1789139905146,
+    "overdue_client-vanessa-machado-146_2026-09-11": 1789139905146
+  },
+  "updated_at": "2026-09-11T16:33:05.581Z"
+}

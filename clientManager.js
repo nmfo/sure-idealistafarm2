@@ -37,7 +37,7 @@ function ensureDataFiles() {
   }
 
   // Copiar ficheiros existentes da pasta seed se a pasta de destino não tiver
-  ['clients.json', 'consultants.json', 'assistants.json', 'listings.json'].forEach(fileName => {
+  ['clients.json', 'consultants.json', 'assistants.json', 'listings.json', 'visits.json', 'google_webhook.json', 'zoho_config.json', 'todoist_config.json'].forEach(fileName => {
     const targetFile = path.join(DATA_DIR, fileName);
     const seedFile = path.join(SEED_DATA_DIR, fileName);
     if (!fs.existsSync(targetFile) && fs.existsSync(seedFile)) {

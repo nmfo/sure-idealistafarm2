@@ -100,9 +100,9 @@ class ZohoService {
     }
 
     return {
-      client_id: process.env.ZOHO_CLIENT_ID || cfg.client_id || '',
-      client_secret: process.env.ZOHO_CLIENT_SECRET || cfg.client_secret || '',
-      refresh_token: process.env.ZOHO_REFRESH_TOKEN || cfg.refresh_token || '',
+      client_id: process.env.ZOHO_CLIENT_ID || cfg.client_id || '1000.IY3MVOLTEOD7YFFNQ2CN68D43L23AC',
+      client_secret: process.env.ZOHO_CLIENT_SECRET || cfg.client_secret || '96a6f775d7831cc26d1d46a697474608329fb13871',
+      refresh_token: process.env.ZOHO_REFRESH_TOKEN || cfg.refresh_token || '1000.e7645dea78429ad94f9238ddab299d20.e98aa91dd75b4b22e40689ec629c578f',
       access_token: cfg.access_token || '',
       expires_at: cfg.expires_at || 0,
       api_domain: process.env.ZOHO_API_DOMAIN || cfg.api_domain || 'https://www.zohoapis.eu',

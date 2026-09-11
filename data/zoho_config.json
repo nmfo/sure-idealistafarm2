@@ -1,0 +1,9 @@
+{
+  "client_id": "1000.IY3MVOLTEOD7YFFNQ2CN68D43L23AC",
+  "client_secret": "96a6f775d7831cc26d1d46a697474608329fb13871",
+  "refresh_token": "1000.e7645dea78429ad94f9238ddab299d20.e98aa91dd75b4b22e40689ec629c578f",
+  "access_token": "1000.1c8f6a26d1b3a0f1dfe0ab898fed9777.430a6eafdf5d2631349d642596296739",
+  "expires_at": 1789143222928,
+  "api_domain": "https://www.zohoapis.eu",
+  "accounts_url": "https://accounts.zoho.eu"
+}
