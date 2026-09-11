@@ -535,6 +535,7 @@ class ZohoService {
       updated_count: updatedCount,
       skipped_count: skippedCount,
       total_clients: mergedClients.length,
+      clients: mergedClients,
       synced_at: new Date().toISOString()
     };
   }

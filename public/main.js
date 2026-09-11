@@ -1258,7 +1258,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/clients');
       if (res.ok) {
         const serverClients = await res.json();
-        clients = Array.isArray(serverClients) ? serverClients : [];
+        const serverList = Array.isArray(serverClients) ? serverClients : [];
+        
+        // Smart Merge: Nunca apagar clientes locais que foram sincronizados ou criados!
+        const clientMap = new Map();
+        
+        // 1. Inserir clientes do servidor
+        serverList.forEach(c => {
+          if (c && (c.id || c.name)) clientMap.set(c.id || c.name, c);
+        });
+
+        // 2. Mesclar clientes locais (preserva adições do Zoho e edições locais)
+        if (Array.isArray(localClients)) {
+          localClients.forEach(c => {
+            if (!c || (!c.id && !c.name)) return;
+            const key = c.id || c.name;
+            if (!clientMap.has(key)) {
+              clientMap.set(key, c);
+            } else {
+              const existing = clientMap.get(key);
+              clientMap.set(key, { ...existing, ...c });
+            }
+          });
+        }
+
+        clients = Array.from(clientMap.values());
+
+        // Se existirem clientes locais adicionais, sincronizar de volta para o servidor em background
+        if (clients.length > serverList.length) {
+          fetch('/api/sync-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clients: clients })
+          }).catch(() => {});
+        }
       } else if (localClients.length > 0) {
         clients = localClients;
       }
@@ -2109,10 +2142,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const res = await fetch('/api/listings/batch-status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ listing_ids: ids, client_id: currentClient.id, status: 'enviado' })
+          body: JSON.stringify({ listing_ids: ids, client_id: currentClient.id, status: 'enviado', client: currentClient })
         });
         const data = await res.json();
-        if (data.driveSync) {
+        if (data.driveSync && data.todoistSync && data.todoistSync.success) {
+          showToast('✅ Top 3 marcado como ENVIADO! Registado na Google Drive e Tarefa criada no Todoist (#Geral)', 'success');
+        } else if (data.todoistSync && data.todoistSync.success) {
+          showToast('✅ Top 3 marcado como ENVIADO e Tarefa de feedback criada no Todoist (#Geral)', 'success');
+        } else if (data.driveSync) {
           showToast('✅ Top 3 marcado como ENVIADO e gravado no Excel da Drive!', 'success');
         } else {
           showToast('Os 3 imóveis foram marcados como ENVIADOS ✉');
@@ -2122,6 +2159,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       top3.forEach(it => it.status = 'enviado');
+      if (currentClient) {
+        currentClient.last_sent_at = new Date().toISOString();
+        currentClient.is_overdue = false;
+        currentClient.days_overdue = 0;
+        currentClient.days_since_sent = 0;
+        persistCurrentClient();
+      }
       await loadClients();
       await loadListings();
     };
@@ -2586,19 +2630,30 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── HELPER FUNCTIONS ─────────────────────────────────────────────────────
   async function setStatus(listingId, status) {
     if (!currentClient) return;
+    const targetListing = listings.find(l => l.id === listingId);
     try {
       const res = await fetch('/api/listings/status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ listing_id: listingId, client_id: currentClient.id, status })
+        body: JSON.stringify({
+          listing_id: listingId,
+          client_id: currentClient.id,
+          status,
+          client: currentClient,
+          listing: targetListing
+        })
       });
       const data = await res.json();
       if (status === 'enviado') {
-        if (data.driveSync) {
-          showToast('✅ Imóvel marcado como ENVIADO e registado no Excel da Google Drive!');
-        } else {
-          showToast('Imóvel marcado como JÁ ENVIADO ✉');
+        let msg = 'Imóvel marcado como JÁ ENVIADO ✉';
+        if (data.driveSync && data.todoistSync && data.todoistSync.success) {
+          msg = '✅ Marcado como ENVIADO! Registado na Google Drive e Tarefa criada no Todoist (#Geral)';
+        } else if (data.todoistSync && data.todoistSync.success) {
+          msg = '✅ Marcado como ENVIADO e Tarefa de feedback criada no Todoist (#Geral)';
+        } else if (data.driveSync) {
+          msg = '✅ Imóvel marcado como ENVIADO e registado no Excel da Google Drive!';
         }
+        showToast(msg, 'success');
       }
     } catch (e) {
       console.warn('Erro ao atualizar status:', e);
@@ -2607,6 +2662,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const item = listings.find(l => l.id === listingId);
     if (item) item.status = status;
     persistCurrentListings();
+
+    if (currentClient && status === 'enviado') {
+      currentClient.last_sent_at = new Date().toISOString();
+      currentClient.is_overdue = false;
+      currentClient.days_overdue = 0;
+      currentClient.days_since_sent = 0;
+      persistCurrentClient();
+    }
 
     updateCounters();
     renderTop3();
@@ -2781,6 +2844,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         if (data.success) {
           showToast(`🎉 Zoho CRM Sincronizado: +${data.added_count} novos, ${data.updated_count} atualizados!`, 'success');
+          if (Array.isArray(data.clients) && data.clients.length > 0) {
+            clients = data.clients;
+            setLocalData(STORAGE_KEYS.CLIENTS, clients);
+          }
           await loadConsultants();
           await loadAssistants();
           await loadClients();

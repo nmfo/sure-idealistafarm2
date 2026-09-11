@@ -718,21 +718,27 @@ app.post('/api/listings/deduplicate/:clientId', (req, res) => {
 googleDriveService.initAuth().catch(err => console.log('Aviso Google Drive:', err.message));
 
 app.post('/api/listings/status', async (req, res) => {
-  const { listing_id, client_id, status } = req.body;
+  const { listing_id, client_id, status, client: clientObj, listing: listingObj } = req.body;
   if (!listing_id || !client_id || !status) {
     return res.status(400).json({ error: 'listing_id, client_id e status são obrigatórios' });
   }
-  const success = clientManager.updateListingStatus(listing_id, client_id, status);
 
-  // Se marcado como "enviado", tentar adicionar linha automaticamente no Google Sheets da Drive e nota no Zoho CRM
+  let client = resolveClient(clientObj || client_id);
+  if (!client && clientObj) {
+    client = clientManager.saveClient(clientObj);
+  }
+
+  const success = clientManager.updateListingStatus(listing_id, client ? client.id : client_id, status);
+
   let driveSync = null;
   let zohoNoteSync = null;
-  if (status === 'enviado') {
-    const client = clientManager.getClient(client_id);
-    const listings = clientManager.getListings(client_id);
-    const listing = listings.find(l => l.id === listing_id);
+  let todoistSync = null;
 
-    if (client && listing) {
+  if (status === 'enviado' && client) {
+    const listings = clientManager.getListings(client.id || client_id);
+    const listing = listings.find(l => l.id === listing_id) || listingObj || null;
+
+    if (listing) {
       // 1. Google Drive / Sheets sync
       if (!googleDriveService.initialized) await googleDriveService.initAuth();
       if (googleDriveService.initialized) {
@@ -773,9 +779,7 @@ app.post('/api/listings/status', async (req, res) => {
         try {
           const consultants = clientManager.getConsultants();
           const consultant = consultants.find(co => co.id === client.consultant_id);
-          todoistService.createSentFeedbackTask(client, [listing], consultant).catch(tErr => {
-            console.warn('Aviso sincronização Todoist ao mudar estado:', tErr.message);
-          });
+          todoistSync = await todoistService.createSentFeedbackTask(client, [listing], consultant);
         } catch (tErr) {
           console.warn('Aviso Todoist:', tErr.message);
         }
@@ -783,7 +787,86 @@ app.post('/api/listings/status', async (req, res) => {
     }
   }
 
-  res.json({ success, driveSync, zohoNoteSync });
+  res.json({ success, driveSync, zohoNoteSync, todoistSync });
+});
+
+app.post('/api/listings/batch-status', async (req, res) => {
+  try {
+    const { listing_ids, client_id, status, client: clientObj } = req.body;
+    if (!listing_ids || !Array.isArray(listing_ids) || !client_id || !status) {
+      return res.status(400).json({ error: 'listing_ids (array), client_id e status são obrigatórios' });
+    }
+
+    let client = resolveClient(clientObj || client_id);
+    if (!client && clientObj) {
+      client = clientManager.saveClient(clientObj);
+    }
+
+    listing_ids.forEach(id => {
+      clientManager.updateListingStatus(id, client ? client.id : client_id, status);
+    });
+
+    let driveSync = null;
+    let zohoNoteSync = null;
+    let todoistSync = null;
+
+    if (status === 'enviado' && client) {
+      const allListings = clientManager.getListings(client.id || client_id);
+      const targetListings = allListings.filter(l => listing_ids.includes(l.id));
+
+      if (targetListings.length > 0) {
+        // 1. Google Drive Sync
+        if (!googleDriveService.initialized) await googleDriveService.initAuth();
+        if (googleDriveService.initialized) {
+          try {
+            driveSync = await googleDriveService.recordSentProperties(client, targetListings);
+          } catch (dErr) {
+            console.warn('Aviso sincronização Drive batch:', dErr.message);
+          }
+        }
+
+        // 2. Zoho POP Note Sync
+        if (client.zoho_id && zohoService.isConfigured()) {
+          try {
+            const consultants = clientManager.getConsultants();
+            const assistants = clientManager.getAssistants();
+            const consultant = consultants.find(co => co.id === client.consultant_id);
+            const assistant = assistants.find(as => as.id === client.assistant_id);
+            const authorName = (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE';
+
+            const popNote = zohoService.formatPopNote({
+              authorName,
+              action: 'Envio de Imóveis',
+              client,
+              consultantName: consultant ? consultant.name : '',
+              assistantName: assistant ? assistant.name : '',
+              listings: targetListings,
+              channel: 'Idealista Farm / WhatsApp'
+            });
+
+            zohoNoteSync = await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
+          } catch (zErr) {
+            console.warn('Aviso sincronização Zoho Note batch:', zErr.message);
+          }
+        }
+
+        // 3. Todoist Task Sync
+        if (todoistService.isConfigured()) {
+          try {
+            const consultants = clientManager.getConsultants();
+            const consultant = consultants.find(co => co.id === client.consultant_id);
+            todoistSync = await todoistService.createSentFeedbackTask(client, targetListings, consultant);
+          } catch (tErr) {
+            console.warn('Aviso sincronização Todoist batch:', tErr.message);
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, count: listing_ids.length, driveSync, zohoNoteSync, todoistSync });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── GOOGLE DRIVE & SHEETS API ────────────────────────────────────────────────
