@@ -5,14 +5,14 @@
     "color": "#938C85"
   },
   {
-    "id": "consultant-rui",
-    "name": "Rui Rebelo",
-    "color": "#5B7FA6"
-  },
-  {
     "id": "consultant-nuno",
     "name": "Nuno Oliveira",
     "color": "#C75233"
+  },
+  {
+    "id": "consultant-rui",
+    "name": "Rui Rebelo",
+    "color": "#5B7FA6"
   },
   {
     "id": "consultant-diogo",
@@ -26,7 +26,17 @@
   },
   {
     "id": "consultant-elizabete",
-    "name": "Elizabete Martins",
+    "name": "Elisabete Martins",
     "color": "#C79433"
+  },
+  {
+    "id": "consultant-pedro",
+    "name": "Pedro Barros",
+    "color": "#5B8C6A"
+  },
+  {
+    "id": "consultant-joao",
+    "name": "João Santos",
+    "color": "#5B7FA6"
   }
 ]

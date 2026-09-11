@@ -1,4 +1,11 @@
-const { google } = require('googleapis');
+let google = null;
+function getGoogleApis() {
+  if (!google) {
+    const api = require('googleapis');
+    google = api.google;
+  }
+  return google;
+}
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
@@ -60,7 +67,8 @@ class GoogleDriveService {
         return false;
       }
 
-      this.auth = new google.auth.GoogleAuth({
+      const gApi = getGoogleApis();
+      this.auth = new gApi.auth.GoogleAuth({
         credentials,
         scopes: [
           'https://www.googleapis.com/auth/drive',
@@ -71,9 +79,9 @@ class GoogleDriveService {
       });
 
       const authClient = await this.auth.getClient();
-      this.drive = google.drive({ version: 'v3', auth: authClient });
-      this.sheets = google.sheets({ version: 'v4', auth: authClient });
-      this.docs = google.docs({ version: 'v1', auth: authClient });
+      this.drive = gApi.drive({ version: 'v3', auth: authClient });
+      this.sheets = gApi.sheets({ version: 'v4', auth: authClient });
+      this.docs = gApi.docs({ version: 'v1', auth: authClient });
 
       this.initialized = true;
       console.log('✅ Google Drive & Sheets API autenticado com sucesso para:', credentials.client_email);
@@ -542,6 +550,168 @@ class GoogleDriveService {
       folder,
       sheetResult
     };
+  }
+
+  /**
+   * Sincronização Master de Clientes via Google Apps Script Webhook
+   */
+  async fetchMasterClients() {
+    if (!this.webhookUrl) return null;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'get_all_clients',
+        root_folder_id: this.rootFolderId
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      if (res.data && res.data.success && Array.isArray(res.data.clients)) {
+        return res.data.clients;
+      }
+    } catch (err) {
+      console.warn('Aviso ao consultar clientes master no Google Drive:', err.message);
+    }
+    return null;
+  }
+
+  async saveMasterClient(clientData) {
+    if (!this.webhookUrl || !clientData) return null;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'save_client',
+        root_folder_id: this.rootFolderId,
+        client: clientData
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      if (res.data && res.data.success) {
+        return res.data.client || clientData;
+      }
+    } catch (err) {
+      console.warn('Aviso ao gravar cliente master no Google Drive:', err.message);
+    }
+    return null;
+  }
+
+  async saveMasterClientsBulk(clientsList) {
+    if (!this.webhookUrl || !Array.isArray(clientsList) || clientsList.length === 0) return 0;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'save_clients_bulk',
+        root_folder_id: this.rootFolderId,
+        clients: clientsList
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 25000
+      });
+      if (res.data && res.data.success) {
+        return res.data.count || clientsList.length;
+      }
+    } catch (err) {
+      console.warn('Aviso ao sincronizar lote de clientes no Google Drive:', err.message);
+    }
+    return 0;
+  }
+
+  async deleteMasterClient(clientId) {
+    if (!this.webhookUrl || !clientId) return false;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'delete_client',
+        root_folder_id: this.rootFolderId,
+        client_id: clientId
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      return !!(res.data && res.data.success);
+    } catch (err) {
+      console.warn('Aviso ao apagar cliente no Google Drive:', err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Sincronização Master de Administrativos via Google Apps Script Webhook
+   */
+  async fetchMasterAssistants() {
+    if (!this.webhookUrl) return null;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'get_assistants',
+        root_folder_id: this.rootFolderId
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      if (res.data && res.data.success && Array.isArray(res.data.assistants)) {
+        return res.data.assistants;
+      }
+    } catch (err) {
+      console.warn('Aviso ao consultar administrativos no Google Drive:', err.message);
+    }
+    return null;
+  }
+
+  async saveMasterAssistant(assistantData) {
+    if (!this.webhookUrl || !assistantData) return null;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'save_assistant',
+        root_folder_id: this.rootFolderId,
+        assistant: assistantData
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      if (res.data && res.data.success) {
+        return res.data.assistant || assistantData;
+      }
+    } catch (err) {
+      console.warn('Aviso ao gravar administrativo no Google Drive:', err.message);
+    }
+    return null;
+  }
+
+  async deleteMasterAssistant(assistantId) {
+    if (!this.webhookUrl || !assistantId) return false;
+    try {
+      const res = await axios.post(this.webhookUrl, {
+        action: 'delete_assistant',
+        root_folder_id: this.rootFolderId,
+        assistant_id: assistantId
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 15000
+      });
+      return !!(res.data && res.data.success);
+    } catch (err) {
+      console.warn('Aviso ao apagar administrativo no Google Drive:', err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Sincroniza marcação de visita com o Google Apps Script Webhook (se disponível)
+   */
+  async scheduleVisit(visitData) {
+    if (this.webhookUrl) {
+      try {
+        const payload = {
+          action: 'schedule_visit',
+          root_folder_id: this.rootFolderId,
+          visit: visitData
+        };
+        const res = await axios.post(this.webhookUrl, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 15000 });
+        if (res.data && res.data.success) {
+          return res.data.result;
+        }
+      } catch (wErr) {
+        console.error('Aviso ao sincronizar visita com Webhook:', wErr.message);
+      }
+    }
+    return null;
   }
 }
 

@@ -1,10 +1,13 @@
 document.addEventListener('DOMContentLoaded', () => {
   let consultants = [];
+  let assistants = [];
   let clients = [];
   let currentClient = null;
+  let currentUser = null;
+  let authToken = null;
   let listings = [];
   let currentFilter = 'all';
-  let sidebarFilter = 'all'; // 'all' or 'overdue'
+  let sidebarFilter = 'all'; // 'all', 'mine', or 'overdue'
   let clientSearchQuery = '';
 
   // Collapsed consultant states
@@ -17,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Drag & drop state
   let draggedClientId = null;
+  let lastAutoClipboard = '';
 
   // Custom sending selection cart
   const selectedListingIds = new Set();
@@ -24,11 +28,43 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── Element references ───────────────────────────────────────────────────
   const consultantsAccordionEl = document.getElementById('consultants-accordion');
   const sidebarCountAll = document.getElementById('sidebar-count-all');
+  const sidebarCountMine = document.getElementById('sidebar-count-mine');
   const sidebarCountOverdue = document.getElementById('sidebar-count-overdue');
   const filterAllClientsBtn = document.getElementById('filter-all-clients');
+  const filterMyClientsBtn = document.getElementById('filter-my-clients');
   const filterOverdueClientsBtn = document.getElementById('filter-overdue-clients');
   const inputClientSearch = document.getElementById('input-client-search');
   const btnClearClientSearch = document.getElementById('btn-clear-client-search');
+
+  // Auth & User Elements
+  const loginOverlay = document.getElementById('login-overlay');
+  const formLogin = document.getElementById('form-login');
+  const loginUserSelect = document.getElementById('login-user-select');
+  const loginUsernameInput = document.getElementById('login-username');
+  const loginPasswordInput = document.getElementById('login-password');
+  const btnToggleLoginPass = document.getElementById('btn-toggle-login-pass');
+  const loginErrorMsg = document.getElementById('login-error-msg');
+  const btnSubmitLogin = document.getElementById('btn-submit-login');
+
+  const sidebarUserCard = document.getElementById('sidebar-user-card');
+  const userAvatarBadge = document.getElementById('user-avatar-badge');
+  const userDisplayName = document.getElementById('user-display-name');
+  const userDisplayRole = document.getElementById('user-display-role');
+  const btnLogout = document.getElementById('btn-logout');
+
+  // Assistants Management Elements
+  const btnManageAssistants = document.getElementById('btn-manage-assistants');
+  const modalAssistants = document.getElementById('modal-assistants');
+  const formAssistant = document.getElementById('form-assistant');
+  const assistantIdInput = document.getElementById('assistant-id');
+  const assistantNameInput = document.getElementById('assistant-name');
+  const assistantUsernameInput = document.getElementById('assistant-username');
+  const assistantPasswordInput = document.getElementById('assistant-password');
+  const assistantRoleSelect = document.getElementById('assistant-role');
+  const assistantColorSelect = document.getElementById('assistant-color');
+  const btnCancelAssistantEdit = document.getElementById('btn-cancel-assistant-edit');
+  const assistantsTableBody = document.getElementById('assistants-table-body');
+  const assistantFormTitle = document.getElementById('assistant-form-title');
 
   const currentClientNameEl = document.getElementById('current-client-name');
   const headerPriorityBadge = document.getElementById('header-priority-badge');
@@ -47,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const listingsGridEl = document.getElementById('listings-grid');
   const inputSearchFilter = document.getElementById('input-search-filter');
   const btnExportCsv = document.getElementById('btn-export-csv');
+  const btnEnrichListings = document.getElementById('btn-enrich-listings');
   const btnClearListings = document.getElementById('btn-clear-listings');
 
   const top3SectionEl = document.getElementById('top3-section');
@@ -66,6 +103,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const formClient  = document.getElementById('form-client');
   const modalConsultant = document.getElementById('modal-consultant');
   const formConsultant  = document.getElementById('form-consultant');
+  const modalImport = document.getElementById('modal-import');
+  const formImport  = document.getElementById('form-import');
+  const btnAddDirectLink = document.getElementById('btn-add-direct-link');
   const modalHtml   = document.getElementById('modal-html');
   const formHtml    = document.getElementById('form-html');
   const modalBookmarklet = document.getElementById('modal-bookmarklet');
@@ -130,54 +170,548 @@ document.addEventListener('DOMContentLoaded', () => {
   const countFav       = document.getElementById('count-favorito');
   const countRejeitado = document.getElementById('count-rejeitado');
 
+  // ── STORAGE MANAGER (PERSISTÊNCIA LOCALSTORAGE & BACKUP) ──────────────────
+  const STORAGE_KEYS = {
+    CLIENTS: 'sure_crm_clients_v2',
+    CONSULTANTS: 'sure_crm_consultants_v2',
+    ASSISTANTS: 'sure_crm_assistants_v2',
+    AUTH_USER: 'sure_auth_user_v2',
+    AUTH_TOKEN: 'sure_auth_token_v2',
+    LISTINGS: 'sure_crm_listings_v2',
+    VISITS: 'sure_crm_visits_v2',
+    ACTIVE_CLIENT: 'sure_crm_active_client_id_v2'
+  };
+
+  function getLocalData(key, fallback = []) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function setLocalData(key, data) {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.warn('Erro ao gravar localStorage:', e);
+    }
+  }
+
+  // ── AUTHENTICATION & LOGIN MANAGEMENT ─────────────────────────────────────
+  function showLoginOverlay() {
+    if (loginOverlay) loginOverlay.classList.remove('hidden');
+  }
+
+  function hideLoginOverlay() {
+    if (loginOverlay) loginOverlay.classList.add('hidden');
+  }
+
+  function updateUserUI() {
+    if (!currentUser) return;
+    if (userDisplayName) userDisplayName.textContent = currentUser.name;
+    if (userDisplayRole) {
+      userDisplayRole.textContent = currentUser.role === 'admin' ? 'Administrador' : 'Administrativo';
+    }
+    if (userAvatarBadge) {
+      const initial = (currentUser.name || 'U').trim().charAt(0).toUpperCase();
+      userAvatarBadge.textContent = initial;
+      userAvatarBadge.style.backgroundColor = currentUser.color || '#C75233';
+    }
+    if (btnManageAssistants) {
+      btnManageAssistants.style.display = currentUser.role === 'admin' ? 'inline-flex' : 'none';
+    }
+  }
+
+  async function checkAuthSession() {
+    const savedUser = getLocalData(STORAGE_KEYS.AUTH_USER, null);
+    const savedToken = localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
+
+    if (savedUser && savedToken) {
+      currentUser = savedUser;
+      authToken = savedToken;
+      updateUserUI();
+      hideLoginOverlay();
+      return true;
+    }
+
+    showLoginOverlay();
+    return false;
+  }
+
+  if (formLogin) {
+    formLogin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = loginUsernameInput ? loginUsernameInput.value.trim() : '';
+      const password = loginPasswordInput ? loginPasswordInput.value.trim() : '';
+
+      if (!username) {
+        showLoginError('Por favor introduza o nome de utilizador');
+        return;
+      }
+
+      if (btnSubmitLogin) {
+        btnSubmitLogin.disabled = true;
+        btnSubmitLogin.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A entrar...';
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          currentUser = data.user;
+          authToken = data.token;
+          setLocalData(STORAGE_KEYS.AUTH_USER, currentUser);
+          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, authToken);
+
+          hideLoginError();
+          hideLoginOverlay();
+          updateUserUI();
+          showToast(`Bem-vindo, ${currentUser.name}! 👋`);
+
+          if (currentUser.role === 'staff' && filterMyClientsBtn) {
+            sidebarFilter = 'mine';
+            filterMyClientsBtn.classList.add('active');
+            if (filterAllClientsBtn) filterAllClientsBtn.classList.remove('active');
+          }
+
+          await init();
+        } else {
+          showLoginError(data.error || 'Credenciais inválidas');
+        }
+      } catch (err) {
+        const found = assistants.find(a => String(a.username || '').toLowerCase() === username.toLowerCase());
+        if (found && (String(found.password || '123') === password || !password)) {
+          currentUser = {
+            id: found.id,
+            name: found.name,
+            username: found.username,
+            role: found.role || (found.id === 'assistant-geral' ? 'admin' : 'staff'),
+            color: found.color || '#5B7FA6'
+          };
+          authToken = 'local-token-' + Date.now();
+          setLocalData(STORAGE_KEYS.AUTH_USER, currentUser);
+          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, authToken);
+          hideLoginError();
+          hideLoginOverlay();
+          updateUserUI();
+          showToast(`Bem-vindo, ${currentUser.name}! 👋`);
+          await init();
+        } else {
+          showLoginError('Erro ao validar login. Verifique a password.');
+        }
+      } finally {
+        if (btnSubmitLogin) {
+          btnSubmitLogin.disabled = false;
+          btnSubmitLogin.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar na Aplicação';
+        }
+      }
+    });
+  }
+
+  if (loginUserSelect) {
+    loginUserSelect.addEventListener('change', (e) => {
+      const selectedId = e.target.value;
+      if (!selectedId) return;
+      const found = assistants.find(a => a.id === selectedId);
+      if (found) {
+        if (loginUsernameInput) loginUsernameInput.value = found.username || found.name;
+        if (loginPasswordInput) {
+          loginPasswordInput.value = found.password || '123';
+          loginPasswordInput.focus();
+        }
+      }
+    });
+  }
+
+  if (btnToggleLoginPass && loginPasswordInput) {
+    btnToggleLoginPass.addEventListener('click', () => {
+      const isPass = loginPasswordInput.type === 'password';
+      loginPasswordInput.type = isPass ? 'text' : 'password';
+      btnToggleLoginPass.innerHTML = isPass ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+    });
+  }
+
+  function showLoginError(msg) {
+    if (loginErrorMsg) {
+      loginErrorMsg.textContent = msg;
+      loginErrorMsg.classList.remove('hidden');
+    }
+  }
+  function hideLoginError() {
+    if (loginErrorMsg) {
+      loginErrorMsg.classList.add('hidden');
+    }
+  }
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      if (confirm('Deseja terminar a sessão atual?')) {
+        currentUser = null;
+        authToken = null;
+        localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
+        localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+        showToast('Sessão terminada. Até breve! 👋');
+        showLoginOverlay();
+      }
+    });
+  }
+
+  // ── ASSISTANTS MANAGEMENT ────────────────────────────────────────────────
+  async function loadAssistants() {
+    let localAst = getLocalData(STORAGE_KEYS.ASSISTANTS, []);
+    try {
+      const res = await fetch('/api/assistants');
+      if (res.ok) {
+        const serverAst = await res.json();
+        if (Array.isArray(serverAst) && serverAst.length > 0) {
+          const map = new Map(serverAst.map(a => [a.id, a]));
+          localAst.forEach(a => {
+            if (!map.has(a.id)) map.set(a.id, a);
+          });
+          assistants = Array.from(map.values());
+        } else if (localAst.length > 0) {
+          assistants = localAst;
+        }
+      } else if (localAst.length > 0) {
+        assistants = localAst;
+      }
+    } catch (e) {
+      if (localAst.length > 0) assistants = localAst;
+      else assistants = [{ id: 'assistant-geral', name: 'Geral / Administração', username: 'geral', password: '123', role: 'admin', color: '#C75233' }];
+    }
+
+    if (!assistants || assistants.length === 0) {
+      assistants = [{ id: 'assistant-geral', name: 'Geral / Administração', username: 'geral', password: '123', role: 'admin', color: '#C75233' }];
+    }
+    setLocalData(STORAGE_KEYS.ASSISTANTS, assistants);
+
+    if (loginUserSelect) {
+      loginUserSelect.innerHTML = '<option value="">-- Escolha da Lista Rápida --</option>';
+      assistants.forEach(a => {
+        const opt = document.createElement('option');
+        opt.value = a.id;
+        opt.textContent = `${a.name} (${a.username || a.name})`;
+        loginUserSelect.appendChild(opt);
+      });
+    }
+
+    renderAssistantsTable();
+  }
+
+  function renderAssistantsTable() {
+    if (!assistantsTableBody) return;
+    assistantsTableBody.innerHTML = '';
+
+    assistants.forEach(a => {
+      const clientCount = clients.filter(c => (c.assistant_id || 'assistant-geral') === a.id).length;
+      const tr = document.createElement('tr');
+      const isMaster = a.id === 'assistant-geral';
+
+      tr.innerHTML = `
+        <td style="padding:9px 12px; font-weight:600; color:var(--basalto); display:flex; align-items:center; gap:8px;">
+          <span style="width:12px; height:12px; border-radius:50%; background:${a.color || '#5B7FA6'}; display:inline-block;"></span>
+          ${esc(a.name)}
+        </td>
+        <td style="padding:9px 12px; font-family:monospace; color:#444;">${esc(a.username || '-')}</td>
+        <td style="padding:9px 12px; font-family:monospace; color:#555;">
+          <span class="pass-text" data-pass="${esc(a.password || '123')}">••••••</span>
+          <button type="button" class="btn-toggle-row-pass" style="background:none; border:none; color:#888; cursor:pointer; margin-left:6px;" title="Mostrar/Ocultar password">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </td>
+        <td style="padding:9px 12px;">
+          <span class="${a.role === 'admin' ? 'badge-role-admin' : 'badge-role-staff'}">${a.role === 'admin' ? 'Admin (Vê Tudo)' : 'Staff (Próprios)'}</span>
+        </td>
+        <td style="padding:9px 12px; text-align:center; font-weight:700; color:var(--terracota);">${clientCount}</td>
+        <td style="padding:9px 12px; text-align:right;">
+          <button type="button" class="btn-action-edit btn-edit-ast" style="background:none; border:none; color:#5B7FA6; cursor:pointer; margin-right:6px; font-size:0.9rem;" title="Editar">
+            <i class="fa-solid fa-pen"></i>
+          </button>
+          ${!isMaster ? `
+            <button type="button" class="btn-action-del btn-del-ast" style="background:none; border:none; color:#c0392b; cursor:pointer; font-size:0.9rem;" title="Apagar">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          ` : ''}
+        </td>`;
+
+      const togglePassBtn = tr.querySelector('.btn-toggle-row-pass');
+      const passSpan = tr.querySelector('.pass-text');
+      if (togglePassBtn && passSpan) {
+        togglePassBtn.addEventListener('click', () => {
+          const isMasked = passSpan.textContent === '••••••';
+          passSpan.textContent = isMasked ? passSpan.dataset.pass : '••••••';
+          togglePassBtn.innerHTML = isMasked ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+        });
+      }
+
+      const editBtn = tr.querySelector('.btn-edit-ast');
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          if (assistantIdInput) assistantIdInput.value = a.id;
+          if (assistantNameInput) assistantNameInput.value = a.name;
+          if (assistantUsernameInput) assistantUsernameInput.value = a.username || '';
+          if (assistantPasswordInput) assistantPasswordInput.value = a.password || '123';
+          if (assistantRoleSelect) assistantRoleSelect.value = a.role || 'staff';
+          if (assistantColorSelect) assistantColorSelect.value = a.color || '#5B7FA6';
+          if (assistantFormTitle) assistantFormTitle.innerHTML = `<i class="fa-solid fa-pen" style="color:var(--terracota);"></i> <span>Editar Administrativo (${esc(a.name)})</span>`;
+          if (btnCancelAssistantEdit) btnCancelAssistantEdit.classList.remove('hidden');
+        });
+      }
+
+      const delBtn = tr.querySelector('.btn-del-ast');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          if (!confirm(`Tem a certeza que deseja APAGAR o administrativo "${a.name}"? Os seus clientes serão reatribuídos à equipa Geral.`)) return;
+          try {
+            const res = await fetch(`/api/assistants/${a.id}`, { method: 'DELETE' });
+            if (res.ok) {
+              showToast(`Administrativo "${a.name}" removido.`);
+              await loadAssistants();
+              await loadClients();
+            }
+          } catch (e) {
+            showToast('Erro ao remover administrativo', 'error');
+          }
+        });
+      }
+
+      assistantsTableBody.appendChild(tr);
+    });
+  }
+
+  if (btnManageAssistants) {
+    btnManageAssistants.addEventListener('click', () => {
+      renderAssistantsTable();
+      showModal(modalAssistants);
+    });
+  }
+
+  if (btnCancelAssistantEdit) {
+    btnCancelAssistantEdit.addEventListener('click', () => {
+      if (formAssistant) formAssistant.reset();
+      if (assistantIdInput) assistantIdInput.value = '';
+      if (assistantFormTitle) assistantFormTitle.innerHTML = `<i class="fa-solid fa-user-plus" style="color:var(--terracota);"></i> <span>Adicionar Novo Administrativo</span>`;
+      btnCancelAssistantEdit.classList.add('hidden');
+    });
+  }
+
+  if (formAssistant) {
+    formAssistant.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const payload = {
+        id: assistantIdInput ? assistantIdInput.value.trim() || null : null,
+        name: assistantNameInput ? assistantNameInput.value.trim() : '',
+        username: assistantUsernameInput ? assistantUsernameInput.value.trim() : '',
+        password: assistantPasswordInput ? assistantPasswordInput.value.trim() : '123',
+        role: assistantRoleSelect ? assistantRoleSelect.value : 'staff',
+        color: assistantColorSelect ? assistantColorSelect.value : '#5B7FA6'
+      };
+
+      if (!payload.name) {
+        showToast('Nome é obrigatório', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/assistants', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast(`Administrativo "${payload.name}" guardado com sucesso! 💾`);
+          formAssistant.reset();
+          if (assistantIdInput) assistantIdInput.value = '';
+          if (btnCancelAssistantEdit) btnCancelAssistantEdit.classList.add('hidden');
+          if (assistantFormTitle) assistantFormTitle.innerHTML = `<i class="fa-solid fa-user-plus" style="color:var(--terracota);"></i> <span>Adicionar Novo Administrativo</span>`;
+          await loadAssistants();
+        }
+      } catch (err) {
+        showToast('Erro ao guardar administrativo', 'error');
+      }
+    });
+  }
+
+  function updateBackupStats() {
+    if (backupStatClients) {
+      const c = getLocalData(STORAGE_KEYS.CLIENTS, []);
+      backupStatClients.textContent = c.length;
+    }
+    if (backupStatListings) {
+      const l = getLocalData(STORAGE_KEYS.LISTINGS, []);
+      backupStatListings.textContent = l.length;
+    }
+    if (backupStatVisits) {
+      const v = getLocalData(STORAGE_KEYS.VISITS, []);
+      backupStatVisits.textContent = v.length;
+    }
+  }
+
+  // Backup Modal Elements
+  const modalBackup = document.getElementById('modal-backup');
+  const btnBackupModal = document.getElementById('btn-backup-modal');
+  const btnExportBackupJson = document.getElementById('btn-export-backup-json');
+  const btnImportBackupJson = document.getElementById('btn-import-backup-json');
+  const fileInputBackup = document.getElementById('file-input-backup');
+  const backupStatClients = document.getElementById('backup-stat-clients');
+  const backupStatListings = document.getElementById('backup-stat-listings');
+  const backupStatVisits = document.getElementById('backup-stat-visits');
+
+  if (btnBackupModal) {
+    btnBackupModal.addEventListener('click', () => {
+      updateBackupStats();
+      showModal(modalBackup);
+    });
+  }
+
+  if (btnExportBackupJson) {
+    btnExportBackupJson.addEventListener('click', () => {
+      const payload = {
+        version: '2.0',
+        exported_at: new Date().toISOString(),
+        consultants: getLocalData(STORAGE_KEYS.CONSULTANTS, consultants),
+        assistants: getLocalData(STORAGE_KEYS.ASSISTANTS, assistants),
+        clients: getLocalData(STORAGE_KEYS.CLIENTS, clients),
+        listings: getLocalData(STORAGE_KEYS.LISTINGS, []),
+        visits: getLocalData(STORAGE_KEYS.VISITS, visits)
+      };
+
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `SURE_Backup_Clientes_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Cópia de segurança descarregada com sucesso! 💾');
+    });
+  }
+
+  if (btnImportBackupJson && fileInputBackup) {
+    btnImportBackupJson.addEventListener('click', () => fileInputBackup.click());
+
+    fileInputBackup.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target.result);
+          if (!parsed || typeof parsed !== 'object') throw new Error('Formato inválido');
+
+          showToast('A restaurar backup... ⏳');
+          if (Array.isArray(parsed.consultants)) setLocalData(STORAGE_KEYS.CONSULTANTS, parsed.consultants);
+          if (Array.isArray(parsed.assistants)) setLocalData(STORAGE_KEYS.ASSISTANTS, parsed.assistants);
+          if (Array.isArray(parsed.clients)) setLocalData(STORAGE_KEYS.CLIENTS, parsed.clients);
+          if (Array.isArray(parsed.listings)) setLocalData(STORAGE_KEYS.LISTINGS, parsed.listings);
+          if (Array.isArray(parsed.visits)) setLocalData(STORAGE_KEYS.VISITS, parsed.visits);
+
+          // Enviar para o servidor restaurar também
+          await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(parsed)
+          }).catch(() => {});
+
+          showToast(`🎉 Backup restaurado! ${(parsed.clients || []).length} clientes carregados!`);
+          hideModals();
+          await loadConsultants();
+          await loadAssistants();
+          await loadClients();
+          await loadVisits();
+        } catch (err) {
+          showToast('Erro ao ler ficheiro de backup JSON', 'error');
+        } finally {
+          fileInputBackup.value = '';
+        }
+      };
+      reader.readAsText(file);
+    });
+  }
+
   // ── Initialization & Event Listeners ─────────────────────────────────────
-  init();
+  (async () => {
+    await loadAssistants();
+    const isAuthed = await checkAuthSession();
+    if (isAuthed) {
+      await init();
+    }
+  })();
 
   async function init() {
     await loadConsultants();
+    await loadAssistants();
     await loadClients();
+    await loadVisits();
+    autoSyncGoogleDriveMaster();
   }
 
-  document.getElementById('btn-add-client').addEventListener('click', () => showClientModal(null));
-  document.getElementById('btn-add-consultant').addEventListener('click', () => showModal(modalConsultant));
+  async function autoSyncGoogleDriveMaster() {
+    try {
+      const res = await fetch('/api/drive/sync-master-clients');
+      const data = await res.json();
+      if (data.success && data.count > 0) {
+        await loadClients();
+      }
+    } catch (e) {}
+  }
+
+  const btnAddClient = document.getElementById('btn-add-client');
+  if (btnAddClient) btnAddClient.addEventListener('click', () => showClientModal(null));
+
+  const btnAddCons = document.getElementById('btn-add-consultant');
+  if (btnAddCons) btnAddCons.addEventListener('click', () => showModal(modalConsultant));
 
   // Zoho CRM Excel File Upload
   const btnImportZoho = document.getElementById('btn-import-zoho');
   const fileInputZoho = document.getElementById('file-input-zoho');
-  btnImportZoho.addEventListener('click', () => fileInputZoho.click());
+  if (btnImportZoho && fileInputZoho) {
+    btnImportZoho.addEventListener('click', () => fileInputZoho.click());
 
-  fileInputZoho.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    fileInputZoho.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64Data = event.target.result;
-      showToast('A processar ficheiro Excel do Zoho CRM... ⏳');
-      try {
-        const res = await fetch('/api/import-zoho-excel', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Data, filename: file.name })
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          showToast(data.message);
-          await loadConsultants();
-          await loadClients();
-        } else {
-          showToast(data.error || 'Erro ao processar ficheiro', 'error');
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64Data = event.target.result;
+        showToast('A processar ficheiro Excel do Zoho CRM... ⏳');
+        try {
+          const res = await fetch('/api/import-zoho-excel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base64Data, filename: file.name })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            showToast(data.message);
+            await loadConsultants();
+            await loadClients();
+          } else {
+            showToast(data.error || 'Erro ao processar ficheiro', 'error');
+          }
+        } catch (err) {
+          showToast('Erro ao carregar ficheiro Excel', 'error');
+        } finally {
+          fileInputZoho.value = '';
         }
-      } catch (err) {
-        showToast('Erro ao carregar ficheiro Excel', 'error');
-      } finally {
-        fileInputZoho.value = '';
-      }
-    };
-    reader.readAsDataURL(file);
-  });
-  btnEditClientHeader.addEventListener('click', () => { if (currentClient) showClientModal(currentClient); });
-  btnDeleteClientHeader.addEventListener('click', () => { if (currentClient) handleDeleteClient(currentClient.id); });
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (btnEditClientHeader) btnEditClientHeader.addEventListener('click', () => { if (currentClient) showClientModal(currentClient); });
+  if (btnDeleteClientHeader) btnDeleteClientHeader.addEventListener('click', () => { if (currentClient) handleDeleteClient(currentClient.id); });
   
   async function openPortalUrl(portalName) {
     if (!currentClient) {
@@ -187,8 +721,18 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/portals-urls/${currentClient.id}`);
       const data = await res.json();
-      if (data.urls && data.urls[portalName]) {
-        window.open(data.urls[portalName], '_blank');
+      if (data.urls) {
+        const allUrls = data.urls.all_urls && data.urls.all_urls[portalName];
+        if (Array.isArray(allUrls) && allUrls.length > 1) {
+          allUrls.forEach((u, idx) => {
+            setTimeout(() => window.open(u, '_blank'), idx * 250);
+          });
+          showToast(`A abrir ${allUrls.length} pesquisas no ${portalName.toUpperCase()} para cada zona! 🚀`);
+        } else if (data.urls[portalName]) {
+          window.open(data.urls[portalName], '_blank');
+        } else {
+          showToast(`Link de pesquisa ${portalName.toUpperCase()} indisponível`, 'error');
+        }
       } else {
         showToast(`Link de pesquisa ${portalName.toUpperCase()} indisponível`, 'error');
       }
@@ -212,7 +756,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  if (btnImportHtml) btnImportHtml.addEventListener('click', () => showModal(modalHtml));
   if (btnScrapeNow) btnScrapeNow.addEventListener('click', triggerScrape);
 
   const btnPasteClipboard = document.getElementById('btn-paste-clipboard');
@@ -320,9 +863,22 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {}
   });
 
-  formClient.addEventListener('submit', handleSaveClient);
-  formConsultant.addEventListener('submit', handleSaveConsultant);
-  formHtml.addEventListener('submit', handleImportHtml);
+  if (btnAddDirectLink) {
+    btnAddDirectLink.addEventListener('click', () => {
+      if (!currentClient) {
+        showToast('Selecione um cliente na lista primeiro!', 'error');
+        return;
+      }
+      showModal(modalImport);
+      const urlInput = document.getElementById('import-url');
+      if (urlInput) setTimeout(() => urlInput.focus(), 150);
+    });
+  }
+
+  if (formClient) formClient.addEventListener('submit', handleSaveClient);
+  if (formConsultant) formConsultant.addEventListener('submit', handleSaveConsultant);
+  if (formHtml) formHtml.addEventListener('submit', handleImportHtml);
+  if (formImport) formImport.addEventListener('submit', handleImportLink);
 
   // ── CHAT ASSISTENTE IA ───────────────────────────────────────────────────
   if (btnOpenChat) {
@@ -455,19 +1011,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  filterAllClientsBtn.addEventListener('click', () => {
-    sidebarFilter = 'all';
-    filterAllClientsBtn.classList.add('active');
-    filterOverdueClientsBtn.classList.remove('active');
-    renderConsultantsAccordion();
-  });
+  if (filterAllClientsBtn) {
+    filterAllClientsBtn.addEventListener('click', () => {
+      sidebarFilter = 'all';
+      filterAllClientsBtn.classList.add('active');
+      if (filterMyClientsBtn) filterMyClientsBtn.classList.remove('active');
+      if (filterOverdueClientsBtn) filterOverdueClientsBtn.classList.remove('active');
+      renderConsultantsAccordion();
+    });
+  }
 
-  filterOverdueClientsBtn.addEventListener('click', () => {
-    sidebarFilter = 'overdue';
-    filterOverdueClientsBtn.classList.add('active');
-    filterAllClientsBtn.classList.remove('active');
-    renderConsultantsAccordion();
-  });
+  if (filterMyClientsBtn) {
+    filterMyClientsBtn.addEventListener('click', () => {
+      sidebarFilter = 'mine';
+      filterMyClientsBtn.classList.add('active');
+      if (filterAllClientsBtn) filterAllClientsBtn.classList.remove('active');
+      if (filterOverdueClientsBtn) filterOverdueClientsBtn.classList.remove('active');
+      renderConsultantsAccordion();
+    });
+  }
+
+  if (filterOverdueClientsBtn) {
+    filterOverdueClientsBtn.addEventListener('click', () => {
+      sidebarFilter = 'overdue';
+      filterOverdueClientsBtn.classList.add('active');
+      if (filterAllClientsBtn) filterAllClientsBtn.classList.remove('active');
+      if (filterMyClientsBtn) filterMyClientsBtn.classList.remove('active');
+      renderConsultantsAccordion();
+    });
+  }
 
   // Client Search Bar Listener
   if (inputClientSearch) {
@@ -496,9 +1068,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  btnExportCsv.addEventListener('click', () => {
-    if (currentClient) window.location.href = `/api/export/${currentClient.id}`;
-  });
+  if (btnExportCsv) {
+    btnExportCsv.addEventListener('click', () => {
+      if (currentClient) window.location.href = `/api/export/${currentClient.id}`;
+    });
+  }
 
   // ── FORMATTER PARA PARTILHA DE IMÓVEIS (WhatsApp / Email) ───────────────
   function isMultiplePeople(name = '') {
@@ -563,41 +1137,47 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Selection Dock Actions
-  btnCopySelection.addEventListener('click', () => {
-    if (selectedListingIds.size === 0) return;
-    const selectedItems = listings.filter(l => selectedListingIds.has(l.id));
-    const text = formatCompleteShareMessage(selectedItems, currentClient);
+  if (btnCopySelection) {
+    btnCopySelection.addEventListener('click', () => {
+      if (selectedListingIds.size === 0) return;
+      const selectedItems = listings.filter(l => selectedListingIds.has(l.id));
+      const text = formatCompleteShareMessage(selectedItems, currentClient);
 
-    copyToClipboard(text, `${selectedItems.length} opções copiadas prontas para envio! 📋`);
-  });
-
-  btnMarkSelectionSent.addEventListener('click', async () => {
-    if (selectedListingIds.size === 0) return;
-    const ids = Array.from(selectedListingIds);
-    await fetch('/api/listings/batch-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ listing_ids: ids, client_id: currentClient.id, status: 'enviado' })
+      copyToClipboard(text, `${selectedItems.length} opções copiadas prontas para envio! 📋`);
     });
+  }
 
-    listings.forEach(it => {
-      if (selectedListingIds.has(it.id)) it.status = 'enviado';
+  if (btnMarkSelectionSent) {
+    btnMarkSelectionSent.addEventListener('click', async () => {
+      if (selectedListingIds.size === 0) return;
+      const ids = Array.from(selectedListingIds);
+      await fetch('/api/listings/batch-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listing_ids: ids, client_id: currentClient.id, status: 'enviado' })
+      });
+
+      listings.forEach(it => {
+        if (selectedListingIds.has(it.id)) it.status = 'enviado';
+      });
+
+      const count = selectedListingIds.size;
+      selectedListingIds.clear();
+      updateSelectionDock();
+      showToast(`${count} imóveis marcados como ENVIADOS ✉`);
+      await loadClients();
+      await loadListings();
     });
+  }
 
-    const count = selectedListingIds.size;
-    selectedListingIds.clear();
-    updateSelectionDock();
-    showToast(`${count} imóveis marcados como ENVIADOS ✉`);
-    await loadClients();
-    await loadListings();
-  });
-
-  btnClearSelection.addEventListener('click', () => {
-    selectedListingIds.clear();
-    updateSelectionDock();
-    renderListings();
-    showToast('Seleção de envio limpa');
-  });
+  if (btnClearSelection) {
+    btnClearSelection.addEventListener('click', () => {
+      selectedListingIds.clear();
+      updateSelectionDock();
+      renderListings();
+      showToast('Seleção de envio limpa');
+    });
+  }
 
   document.querySelectorAll('.btn-close-modal').forEach(b => b.addEventListener('click', hideModals));
 
@@ -610,11 +1190,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  inputSearchFilter.addEventListener('input', renderListings);
+  if (inputSearchFilter) inputSearchFilter.addEventListener('input', renderListings);
 
   // Slider events
-  sliderBtnPrev.addEventListener('click', prevSlide);
-  sliderBtnNext.addEventListener('click', nextSlide);
+  if (sliderBtnPrev) sliderBtnPrev.addEventListener('click', prevSlide);
+  if (sliderBtnNext) sliderBtnNext.addEventListener('click', nextSlide);
   document.addEventListener('keydown', e => {
     if (!modalDetail.classList.contains('hidden')) {
       if (e.key === 'ArrowLeft') prevSlide();
@@ -625,41 +1205,100 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ── DATA LOADING ─────────────────────────────────────────────────────────
   async function loadConsultants() {
+    let localCons = getLocalData(STORAGE_KEYS.CONSULTANTS, []);
     try {
       const res = await fetch('/api/consultants');
-      consultants = await res.json();
-      // Fechar todos os dropdowns de consultores por defeito na abertura da app
-      if (collapsedConsultants.size === 0) {
-        consultants.forEach(c => collapsedConsultants.add(c.id));
+      if (res.ok) {
+        const serverCons = await res.json();
+        if (Array.isArray(serverCons) && serverCons.length > 0) {
+          const consMap = new Map(serverCons.map(c => [c.id, c]));
+          localCons.forEach(c => {
+            if (!consMap.has(c.id)) consMap.set(c.id, c);
+          });
+          consultants = Array.from(consMap.values());
+        } else if (localCons.length > 0) {
+          consultants = localCons;
+        }
+      } else if (localCons.length > 0) {
+        consultants = localCons;
       }
     } catch (e) {
+      if (localCons.length > 0) consultants = localCons;
+      else consultants = [{ id: 'consultant-geral', name: 'Geral', color: '#C75233' }];
+    }
+    if (!consultants || consultants.length === 0) {
       consultants = [{ id: 'consultant-geral', name: 'Geral', color: '#C75233' }];
-      collapsedConsultants.add('consultant-geral');
+    }
+    setLocalData(STORAGE_KEYS.CONSULTANTS, consultants);
+
+    // Fechar todos os dropdowns de consultores por defeito na abertura da app
+    if (collapsedConsultants.size === 0) {
+      consultants.forEach(c => collapsedConsultants.add(c.id));
     }
   }
 
+  function isCurrentUserAdmin() {
+    if (!currentUser) return true;
+    return currentUser.role === 'admin' || currentUser.id === 'assistant-geral' || currentUser.username === 'geral';
+  }
+
+  function getAllowedClients() {
+    if (isCurrentUserAdmin()) {
+      return clients;
+    }
+    const myId = currentUser ? currentUser.id : 'assistant-geral';
+    return clients.filter(c => (c.assistant_id || 'assistant-geral') === myId);
+  }
+
   async function loadClients() {
+    let localClients = getLocalData(STORAGE_KEYS.CLIENTS, []);
+    let localListings = getLocalData(STORAGE_KEYS.LISTINGS, []);
+
     try {
       const res = await fetch('/api/clients');
-      clients = await res.json();
-      updateSidebarCounters();
-      renderConsultantsAccordion();
-
-      if (clients.length > 0 && !currentClient) {
-        selectClient(clients[0]);
-      } else if (currentClient) {
-        const found = clients.find(c => c.id === currentClient.id);
-        if (found) selectClient(found);
+      if (res.ok) {
+        const serverClients = await res.json();
+        clients = Array.isArray(serverClients) ? serverClients : [];
+      } else if (localClients.length > 0) {
+        clients = localClients;
       }
     } catch (e) {
-      showToast('Erro ao carregar clientes', 'error');
+      if (localClients.length > 0) {
+        clients = localClients;
+      }
+    }
+
+    setLocalData(STORAGE_KEYS.CLIENTS, clients);
+    updateSidebarCounters();
+    renderConsultantsAccordion();
+    updateBackupStats();
+
+    const allowed = getAllowedClients();
+    const savedActiveId = localStorage.getItem(STORAGE_KEYS.ACTIVE_CLIENT);
+    if (savedActiveId && !currentClient) {
+      const found = allowed.find(c => c.id === savedActiveId);
+      if (found) selectClient(found);
+    }
+
+    if (allowed.length > 0 && (!currentClient || !allowed.some(c => c.id === currentClient.id))) {
+      selectClient(allowed[0]);
+    } else if (currentClient) {
+      const found = allowed.find(c => c.id === currentClient.id);
+      if (found) selectClient(found);
+      else if (allowed.length > 0) selectClient(allowed[0]);
     }
   }
 
   function updateSidebarCounters() {
-    sidebarCountAll.textContent = clients.length;
-    const overdueCount = clients.filter(c => c.is_overdue).length;
-    sidebarCountOverdue.textContent = overdueCount;
+    const allowed = getAllowedClients();
+    if (sidebarCountAll) sidebarCountAll.textContent = allowed.length;
+    if (sidebarCountMine) {
+      sidebarCountMine.textContent = allowed.length;
+    }
+    if (sidebarCountOverdue) {
+      const overdueCount = allowed.filter(c => c.is_overdue).length;
+      sidebarCountOverdue.textContent = overdueCount;
+    }
   }
 
   // ── CONSULTANTS & CLIENTS ACCORDION RENDERING ────────────────────────────
@@ -671,11 +1310,21 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const allowed = getAllowedClients();
+    const isAdmin = isCurrentUserAdmin();
     let totalRenderedClients = 0;
 
     consultants.forEach(cons => {
-      let consClients = clients.filter(c => (c.consultant_id || 'consultant-geral') === cons.id);
-      if (sidebarFilter === 'overdue') {
+      let consClients = allowed.filter(c => (c.consultant_id || 'consultant-geral') === cons.id);
+
+      // Regra de Acesso: Administrativos normais só veem consultores dos quais têm clientes atribuídos
+      if (!isAdmin && consClients.length === 0 && (!clientSearchQuery || !clientSearchQuery.trim())) {
+        return;
+      }
+
+      if (sidebarFilter === 'mine') {
+        consClients = consClients.filter(c => (c.assistant_id || 'assistant-geral') === (currentUser ? currentUser.id : 'assistant-geral'));
+      } else if (sidebarFilter === 'overdue') {
         consClients = consClients.filter(c => c.is_overdue);
       }
 
@@ -689,6 +1338,10 @@ document.addEventListener('DOMContentLoaded', () => {
                  (c.operation || '').toLowerCase().includes(q) ||
                  (c.priority || '').toLowerCase().includes(q);
         });
+      }
+
+      if (!isAdmin && consClients.length === 0) {
+        return;
       }
 
       totalRenderedClients += consClients.length;
@@ -728,7 +1381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="consultant-badges-row">
           ${overdueCount > 0 ? `<span class="consultant-overdue-badge" title="${overdueCount} clientes em atraso">⚠️ ${overdueCount}</span>` : ''}
           <span class="consultant-count-badge">${consClients.length}</span>
-          ${cons.id !== 'consultant-geral' ? `
+          ${isAdmin && cons.id !== 'consultant-geral' ? `
             <button class="consultant-del-btn" title="Apagar consultor">
               <i class="fa-solid fa-trash-can"></i>
             </button>
@@ -786,10 +1439,17 @@ document.addEventListener('DOMContentLoaded', () => {
           const prioClass = prio === 'SU' ? 'badge-su' : (prio === 'U' ? 'badge-u' : 'badge-s');
           const prioDesc = prio === 'SU' ? 'SU (2d)' : (prio === 'U' ? 'U (5d)' : 'S (10d)');
 
+          const clientAst = assistants.find(a => a.id === (c.assistant_id || 'assistant-geral'));
+          const astTag = clientAst && clientAst.id !== 'assistant-geral' ? `
+            <span class="assistant-tag" style="background:${clientAst.color || '#5B7FA6'};font-size:0.68rem;padding:1px 5px;border-radius:4px;" title="Administrativo Responsável: ${esc(clientAst.name)}">
+              <i class="fa-solid fa-user-check"></i> ${esc(clientAst.name.split(' ')[0])}
+            </span>` : '';
+
           clientCard.innerHTML = `
             <div class="client-item-top">
               <span class="client-item-name">${esc(c.name)}</span>
               <div style="display:flex;align-items:center;gap:4px;">
+                ${astTag}
                 <span class="badge-priority ${prioClass}" title="Prioridade ${prioDesc}">${prio}</span>
                 ${c.is_overdue ? `<span class="badge-overdue-pill" title="${c.days_overdue} dias de atraso no envio">⚠️ ${c.days_overdue}d</span>` : ''}
               </div>
@@ -865,6 +1525,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function selectClient(c) {
     currentClient = c;
+    if (c && c.id) {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_CLIENT, c.id);
+    }
     // Resetar memória de clipboard ao mudar de cliente — garante nova captura automática
     lastAutoClipboard = '';
     renderConsultantsAccordion();
@@ -942,9 +1605,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join(' ');
 
     const areaBadge = c.min_area ? `<span class="badge"><i class="fa-solid fa-ruler-combined"></i> Mín. ${c.min_area} m²</span>` : '';
+    const clientAst = assistants.find(a => a.id === (c.assistant_id || 'assistant-geral'));
+    const astBadge = clientAst ? `<span class="badge" style="background:${clientAst.color || '#5B7FA6'};color:#fff;"><i class="fa-solid fa-user-check"></i> Procura: ${esc(clientAst.name)}</span>` : '';
+    const zohoBadge = c.zoho_id ? `<span class="badge" style="background:#e0523d;color:#fff;" title="Sincronizado com Zoho CRM (ID: ${c.zoho_id})"><i class="fa-solid fa-cloud"></i> Zoho CRM</span>` : '';
 
     clientBadgesEl.innerHTML = `
       <span class="badge"><i class="fa-solid fa-user-tie"></i> ${esc(cons ? cons.name : 'Geral')}</span>
+      ${astBadge}
+      ${zohoBadge}
       <span class="badge badge-highlight"><i class="fa-solid fa-building"></i> ${esc(typeLabel)}</span>
       <span class="badge badge-highlight"><i class="fa-solid fa-tag"></i> ${cap(c.operation)}</span>
       <span class="badge"><i class="fa-solid fa-location-dot"></i> ${cap(c.location)}</span>
@@ -952,6 +1620,32 @@ document.addEventListener('DOMContentLoaded', () => {
       <span class="badge"><i class="fa-solid fa-bed"></i> ${typos}</span>
       ${areaBadge}
       ${amenitiesList}`;
+
+    // Atualizar botões de ação do Zoho CRM no Header
+    const btnZohoDeal = document.getElementById('btn-zoho-deal-open');
+    const btnZohoNote = document.getElementById('btn-zoho-add-note');
+    if (btnZohoDeal) {
+      if (c.zoho_id) {
+        btnZohoDeal.classList.remove('hidden');
+        btnZohoDeal.onclick = (e) => {
+          e.preventDefault();
+          window.open(`https://crm.zoho.eu/crm/tab/Deals/${c.zoho_id}`, '_blank');
+        };
+      } else {
+        btnZohoDeal.classList.add('hidden');
+      }
+    }
+    if (btnZohoNote) {
+      if (c.zoho_id) {
+        btnZohoNote.classList.remove('hidden');
+        btnZohoNote.onclick = (e) => {
+          e.preventDefault();
+          showZohoNoteModal(c);
+        };
+      } else {
+        btnZohoNote.classList.add('hidden');
+      }
+    }
 
     loadListings();
   }
@@ -964,19 +1658,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Populate consultants dropdown
     const selectCons = document.getElementById('client-consultant');
-    selectCons.innerHTML = '';
-    consultants.forEach(con => {
-      const opt = document.createElement('option');
-      opt.value = con.id;
-      opt.textContent = con.name;
-      selectCons.appendChild(opt);
-    });
+    if (selectCons) {
+      selectCons.innerHTML = '';
+      consultants.forEach(con => {
+        const opt = document.createElement('option');
+        opt.value = con.id;
+        opt.textContent = con.name;
+        selectCons.appendChild(opt);
+      });
+    }
+
+    // Populate assistants dropdown
+    const selectAst = document.getElementById('client-assistant');
+    if (selectAst) {
+      selectAst.innerHTML = '';
+      assistants.forEach(ast => {
+        const opt = document.createElement('option');
+        opt.value = ast.id;
+        opt.textContent = ast.name;
+        selectAst.appendChild(opt);
+      });
+    }
 
     if (clientToEdit) {
       document.getElementById('modal-client-title').textContent = 'Editar Cliente & Preferências';
       document.getElementById('client-id').value = clientToEdit.id;
       document.getElementById('client-name').value = clientToEdit.name || '';
-      document.getElementById('client-consultant').value = clientToEdit.consultant_id || 'consultant-geral';
+      if (selectCons) selectCons.value = clientToEdit.consultant_id || 'consultant-geral';
+      if (selectAst) selectAst.value = clientToEdit.assistant_id || 'assistant-geral';
       document.getElementById('client-priority').value = clientToEdit.priority || 'U';
       document.getElementById('client-op').value = clientToEdit.operation || 'comprar';
       document.getElementById('client-type').value = clientToEdit.property_type || 'apartamentos';
@@ -1002,6 +1711,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       document.getElementById('modal-client-title').textContent = 'Novo Cliente';
       document.getElementById('client-id').value = '';
+      if (selectAst) selectAst.value = currentUser ? currentUser.id : 'assistant-geral';
       document.getElementById('client-priority').value = 'U';
       document.getElementById('client-type').value = 'apartamentos';
       document.getElementById('client-min-area').value = '';
@@ -1021,9 +1731,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const amenities = [...document.querySelectorAll('input[name="amenities"]:checked')].map(cb => cb.value);
 
     const payload = {
-      id: document.getElementById('client-id').value || null,
+      id: document.getElementById('client-id').value || ('client-' + Math.random().toString(36).substring(2, 9)),
       name: document.getElementById('client-name').value.trim(),
-      consultant_id: document.getElementById('client-consultant').value,
+      consultant_id: document.getElementById('client-consultant')?.value || 'consultant-geral',
+      assistant_id: document.getElementById('client-assistant')?.value || (currentUser ? currentUser.id : 'assistant-geral'),
       priority: document.getElementById('client-priority').value,
       operation: document.getElementById('client-op').value,
       property_type: document.getElementById('client-type').value,
@@ -1038,6 +1749,19 @@ document.addEventListener('DOMContentLoaded', () => {
       custom_search_url: document.getElementById('client-custom-search-url').value.trim() || null
     };
 
+    // Guardar imediatamente no estado local e localStorage
+    const localIdx = clients.findIndex(c => c.id === payload.id);
+    if (localIdx !== -1) {
+      clients[localIdx] = { ...clients[localIdx], ...payload, updated_at: new Date().toISOString() };
+    } else {
+      payload.created_at = new Date().toISOString();
+      clients.push(payload);
+    }
+    setLocalData(STORAGE_KEYS.CLIENTS, clients);
+    updateSidebarCounters();
+    renderConsultantsAccordion();
+    updateBackupStats();
+
     try {
       const res = await fetch('/api/clients', {
         method: 'POST',
@@ -1046,15 +1770,22 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       if (res.ok) {
         const saved = await res.json();
-        showToast('Cliente guardado com sucesso! 💾');
+        const sIdx = clients.findIndex(c => c.id === saved.id);
+        if (sIdx !== -1) clients[sIdx] = saved;
+        setLocalData(STORAGE_KEYS.CLIENTS, clients);
+        showToast('Cliente guardado em memória com sucesso! 💾');
         hideModals();
         await loadClients();
         selectClient(saved);
       } else {
-        showToast('Erro ao guardar cliente', 'error');
+        showToast('Cliente guardado na memória do navegador! 💾');
+        hideModals();
+        selectClient(payload);
       }
     } catch (e) {
-      showToast('Erro de comunicação', 'error');
+      showToast('Cliente guardado na memória do navegador! 💾');
+      hideModals();
+      selectClient(payload);
     }
   }
 
@@ -1063,29 +1794,40 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!clientToDelete) return;
     if (!confirm(`Tem a certeza que deseja APAGAR permanentemente o cliente "${clientToDelete.name}" e todas as suas listagens?`)) return;
 
+    // Atualizar imediatamente o estado local e localStorage
+    clients = clients.filter(c => c.id !== clientId);
+    setLocalData(STORAGE_KEYS.CLIENTS, clients);
+
+    // Remover listings locais deste cliente
+    let allLocalListings = getLocalData(STORAGE_KEYS.LISTINGS, []);
+    allLocalListings = allLocalListings.filter(l => l.client_id !== clientId);
+    setLocalData(STORAGE_KEYS.LISTINGS, allLocalListings);
+
+    if (currentClient?.id === clientId) {
+      currentClient = null;
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_CLIENT);
+    }
+    updateSidebarCounters();
+    renderConsultantsAccordion();
+    updateBackupStats();
+
     try {
-      const res = await fetch(`/api/clients/${clientId}`, { method: 'DELETE' });
-      if (res.ok) {
-        showToast(`Cliente "${clientToDelete.name}" apagado com sucesso. 🗑️`);
-        if (currentClient?.id === clientId) {
-          currentClient = null;
-        }
-        await loadClients();
-        if (!clients.length) {
-          currentClientNameEl.textContent = 'Selecione um Cliente';
-          headerPriorityBadge.innerHTML = '';
-          clientBadgesEl.innerHTML = '';
-          listingsGridEl.innerHTML = `
-            <div class="empty-state">
-              <i class="fa-solid fa-users"></i>
-              <h3>Nenhum cliente ativo</h3>
-              <p>Adicione um novo cliente no botão <strong>+</strong> da barra lateral.</p>
-            </div>`;
-          top3SectionEl.classList.add('hidden');
-        }
-      }
-    } catch (e) {
-      showToast('Erro ao apagar cliente', 'error');
+      await fetch(`/api/clients/${clientId}`, { method: 'DELETE' });
+    } catch (e) {}
+
+    showToast(`Cliente "${clientToDelete.name}" apagado com sucesso. 🗑️`);
+    await loadClients();
+    if (!clients.length) {
+      currentClientNameEl.textContent = 'Selecione um Cliente';
+      headerPriorityBadge.innerHTML = '';
+      clientBadgesEl.innerHTML = '';
+      listingsGridEl.innerHTML = `
+        <div class="empty-state">
+          <i class="fa-solid fa-users"></i>
+          <h3>Nenhum cliente ativo</h3>
+          <p>Adicione um novo cliente no botão <strong>+</strong> da barra lateral.</p>
+        </div>`;
+      top3SectionEl.classList.add('hidden');
     }
   }
 
@@ -1104,30 +1846,88 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       showToast('A limpar imóveis... ⏳');
+      // Limpar no localStorage
+      let allLocalListings = getLocalData(STORAGE_KEYS.LISTINGS, []);
+      allLocalListings = allLocalListings.filter(l => l.client_id !== currentClient.id);
+      setLocalData(STORAGE_KEYS.LISTINGS, allLocalListings);
+      listings = [];
+
       const res = await fetch(`/api/listings/clear/${currentClient.id}`, { method: 'DELETE' });
       const data = await res.json();
       if (res.ok && data.success) {
         showToast(`🧹 ${data.deletedCount || listings.length} imóveis limpos com sucesso!`);
-        selectedListingIds.clear();
-        updateSelectionDock();
+      } else {
+        showToast('Imóveis limpos localmente com sucesso! 🧹');
+      }
+      selectedListingIds.clear();
+      updateSelectionDock();
+      updateBackupStats();
+      await loadClients();
+      await loadListings();
+    } catch (err) {
+      showToast('Imóveis limpos localmente com sucesso! 🧹');
+      selectedListingIds.clear();
+      updateSelectionDock();
+      await loadListings();
+    }
+  }
+
+  async function handleEnrichListings() {
+    if (!currentClient) {
+      showToast('Selecione um cliente primeiro!', 'error');
+      return;
+    }
+    if (!listings || !listings.length) {
+      showToast(`O cliente "${currentClient.name}" não tem imóveis para atualizar.`, 'info');
+      return;
+    }
+
+    const origHtml = btnEnrichListings ? btnEnrichListings.innerHTML : '';
+    if (btnEnrichListings) {
+      btnEnrichListings.disabled = true;
+      btnEnrichListings.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A atualizar...';
+    }
+
+    showToast('A obter fotos HD, preços e detalhes dos imóveis... ⏳');
+
+    try {
+      const res = await fetch(`/api/listings/enrich/${currentClient.id}`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(data.message || 'Dados atualizados com sucesso! 🎉');
         await loadClients();
         await loadListings();
       } else {
-        showToast(data.error || 'Erro ao limpar imóveis', 'error');
+        showToast(data.error || 'Não foi possível atualizar dados', 'error');
       }
-    } catch (err) {
-      showToast('Erro de comunicação com o servidor', 'error');
+    } catch (e) {
+      showToast('Erro de comunicação ao atualizar dados', 'error');
+    } finally {
+      if (btnEnrichListings) {
+        btnEnrichListings.disabled = false;
+        btnEnrichListings.innerHTML = origHtml;
+      }
     }
   }
 
   if (btnClearListingsHeader) btnClearListingsHeader.addEventListener('click', handleClearClientListings);
   if (btnClearListings) btnClearListings.addEventListener('click', handleClearClientListings);
+  if (btnEnrichListings) btnEnrichListings.addEventListener('click', handleEnrichListings);
 
   // ── CONSULTANT MODAL ─────────────────────────────────────────────────────
   async function handleSaveConsultant(e) {
     e.preventDefault();
     const name = document.getElementById('consultant-name').value.trim();
     const color = document.getElementById('consultant-color').value;
+
+    const newCons = {
+      id: 'consultant-' + Math.random().toString(36).substring(2, 9),
+      name,
+      color: color || '#C75233'
+    };
+    consultants.push(newCons);
+    setLocalData(STORAGE_KEYS.CONSULTANTS, consultants);
+    renderConsultantsAccordion();
 
     try {
       const res = await fetch('/api/consultants', {
@@ -1136,28 +1936,67 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ name, color })
       });
       if (res.ok) {
-        showToast(`Consultor "${name}" adicionado com sucesso! 👔`);
-        hideModals();
-        await loadConsultants();
-        renderConsultantsAccordion();
+        const saved = await res.json();
+        const idx = consultants.findIndex(c => c.id === newCons.id);
+        if (idx !== -1) consultants[idx] = saved;
+        setLocalData(STORAGE_KEYS.CONSULTANTS, consultants);
       }
-    } catch (e) {
-      showToast('Erro ao adicionar consultor', 'error');
-    }
+    } catch (e) {}
+
+    showToast(`Consultor "${name}" adicionado com sucesso! 👔`);
+    hideModals();
+    await loadConsultants();
+    renderConsultantsAccordion();
+  }
+
+  function persistCurrentListings() {
+    if (!currentClient) return;
+    let allListings = getLocalData(STORAGE_KEYS.LISTINGS, []);
+    allListings = allListings.filter(l => l.client_id !== currentClient.id);
+    allListings.push(...listings);
+    setLocalData(STORAGE_KEYS.LISTINGS, allListings);
+    updateBackupStats();
   }
 
   // ── LISTINGS MANAGEMENT ──────────────────────────────────────────────────
   async function loadListings() {
     if (!currentClient) return;
+    let allLocalListings = getLocalData(STORAGE_KEYS.LISTINGS, []);
+    let clientLocalListings = allLocalListings.filter(l => l.client_id === currentClient.id);
+
     try {
       const res = await fetch(`/api/listings/${currentClient.id}`);
-      listings = await res.json();
-      updateCounters();
-      renderTop3();
-      renderListings();
+      if (res.ok) {
+        const serverListings = await res.json();
+        if (Array.isArray(serverListings) && serverListings.length > 0) {
+          listings = serverListings;
+          persistCurrentListings();
+        } else if (clientLocalListings.length > 0) {
+          listings = clientLocalListings;
+          fetch('/api/sync-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ listings: clientLocalListings })
+          }).catch(() => {});
+        } else {
+          listings = [];
+        }
+      } else if (clientLocalListings.length > 0) {
+        listings = clientLocalListings;
+      } else {
+        listings = [];
+      }
     } catch (e) {
-      showToast('Erro ao carregar imóveis', 'error');
+      if (clientLocalListings.length > 0) {
+        listings = clientLocalListings;
+      } else {
+        listings = [];
+      }
     }
+
+    updateCounters();
+    renderTop3();
+    renderListings();
   }
 
   function updateSelectionDock() {
@@ -1659,14 +2498,32 @@ document.addEventListener('DOMContentLoaded', () => {
   // ── MANUAL IMPORTS ───────────────────────────────────────────────────────
   async function handleImportLink(e) {
     e.preventDefault();
-    if (!currentClient) return;
+    if (!currentClient) {
+      showToast('Selecione um cliente na lista primeiro!', 'error');
+      return;
+    }
+
+    const urlValue = (document.getElementById('import-url')?.value || '').trim();
+    if (!urlValue) {
+      showToast('Por favor insira pelo menos um link de imóvel', 'error');
+      return;
+    }
+
+    const submitBtn = document.getElementById('btn-submit-import');
+    const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A extrair dados do anúncio...';
+    }
+
+    showToast('A extrair dados e fotos do anúncio... ⏳');
 
     const payload = {
       client_id: currentClient.id,
-      url: document.getElementById('import-url').value.trim(),
-      title: document.getElementById('import-title').value.trim(),
-      price: document.getElementById('import-price').value.trim(),
-      location: document.getElementById('import-location').value.trim()
+      url: urlValue,
+      title: (document.getElementById('import-title')?.value || '').trim(),
+      price: (document.getElementById('import-price')?.value || '').trim(),
+      location: (document.getElementById('import-location')?.value || '').trim()
     };
 
     try {
@@ -1675,16 +2532,23 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (res.ok) {
-        showToast('Imóvel adicionado com sucesso! 🔗');
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`🎉 ${data.total_found || 1} imóvel(is) adicionado(s) com sucesso para ${currentClient.name}! (${data.added_new || 0} novos)`);
         hideModals();
+        if (formImport) formImport.reset();
         await loadClients();
         await loadListings();
       } else {
-        showToast('Erro ao importar link', 'error');
+        showToast(data.error || 'Erro ao importar link', 'error');
       }
     } catch (e) {
-      showToast('Erro de comunicação', 'error');
+      showToast('Erro de comunicação com o servidor', 'error');
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalBtnHtml;
+      }
     }
   }
 
@@ -1742,6 +2606,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const item = listings.find(l => l.id === listingId);
     if (item) item.status = status;
+    persistCurrentListings();
 
     updateCounters();
     renderTop3();
@@ -1782,16 +2647,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function showModal(modal) { if (modal) modal.classList.remove('hidden'); }
-  function hideModals() {
-    document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
-    try { if (formClient) formClient.reset(); } catch (e) {}
-    try { if (formConsultant) formConsultant.reset(); } catch (e) {}
-    try { if (formHtml) formHtml.reset(); } catch (e) {}
+  function showModal(modal) {
+    if (modal) modal.classList.remove('hidden');
   }
 
-  // Fechar modais ao clicar no fundo ou tecla ESC
-  document.querySelectorAll('.modal-backdrop').forEach(m => {
+  function hideModals() {
+    document.querySelectorAll('.modal-backdrop, .modal-overlay').forEach(m => m.classList.add('hidden'));
+    try { if (formClient) formClient.reset(); } catch (e) {}
+    try { if (formConsultant) formConsultant.reset(); } catch (e) {}
+  }
+
+  // Fechar modais ao clicar no botão fechar, fundo ou tecla ESC
+  document.querySelectorAll('.btn-close-modal').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      hideModals();
+    });
+  });
+
+  document.querySelectorAll('.modal-backdrop, .modal-overlay').forEach(m => {
     m.addEventListener('click', (e) => {
       if (e.target === m) hideModals();
     });
@@ -1819,6 +2693,210 @@ document.addEventListener('DOMContentLoaded', () => {
   function cap(s) {
     if (!s) return '';
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // ── ZOHO CRM API INTEGRATION & NOTES ──────────────────────────────────────
+  const btnSyncZohoApi = document.getElementById('btn-sync-zoho-api');
+  const modalZohoNote = document.getElementById('modal-zoho-note');
+  const btnCloseZohoNoteModal = document.getElementById('btn-close-zoho-note-modal');
+  const btnCancelZohoNote = document.getElementById('btn-cancel-zoho-note');
+  const btnSubmitZohoNote = document.getElementById('btn-submit-zoho-note');
+  const selectZohoNoteAuthor = document.getElementById('select-zoho-note-author');
+  const selectZohoNoteAction = document.getElementById('select-zoho-note-action');
+  const selectZohoNoteChannel = document.getElementById('select-zoho-note-channel');
+  const zohoNoteTitlePreview = document.getElementById('zoho-note-title-preview');
+  const btnReloadPopTemplate = document.getElementById('btn-reload-pop-template');
+  const inputZohoNoteContent = document.getElementById('input-zoho-note-content');
+  const zohoNoteClientName = document.getElementById('zoho-note-client-name');
+
+  function updateZohoNoteTitlePreview() {
+    const author = selectZohoNoteAuthor ? selectZohoNoteAuthor.value : (currentUser ? currentUser.name : 'Equipa SURE');
+    const action = selectZohoNoteAction ? selectZohoNoteAction.value : 'Troca de Mensagens';
+    if (zohoNoteTitlePreview) {
+      zohoNoteTitlePreview.textContent = `${author} — ${action}`;
+    }
+  }
+
+  function generatePopNoteTemplate(client, authorName, actionName, channelName) {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-PT') + ' ' + now.toLocaleTimeString('pt-PT', { hour: '2-digit', minute: '2-digit' });
+    const clientName = client ? client.name : 'Cliente';
+    const cons = consultants.find(c => c.id === (client ? client.consultant_id : ''));
+    const consName = cons ? cons.name : 'Consultor Responsável';
+    const ast = assistants.find(a => a.id === (client ? client.assistant_id : ''));
+    const astName = ast ? ast.name : (authorName || 'Administrativo');
+
+    const participants = `${astName} (Administrativo), ${consName} (Consultor) e ${clientName} (Cliente)`;
+
+    return [
+      `Data e Hora: ${dateStr}`,
+      `Canal: ${channelName || 'WhatsApp'}`,
+      `Participantes: ${participants}`,
+      `Objetivo da Interação: ${actionName || 'Troca de Mensagens'} com o cliente e acompanhamento de critérios`,
+      ``,
+      `Factos Confirmados:`,
+      `- `,
+      ``,
+      `Necessidades / Critérios:`,
+      `- `,
+      ``,
+      `Resultado:`,
+      `- `,
+      ``,
+      `Próxima Ação, Responsável e Prazo:`,
+      `• Próxima Ação: Agendar visita / Enviar novas opções de imóveis`,
+      `• Responsável: ${consName}`,
+      `• Prazo: 48 horas`,
+      ``,
+      `Log Técnico: Registo manual via Idealista Farm (POP 00.05.05.POP)`
+    ].join('\n');
+  }
+
+  if (selectZohoNoteAuthor) selectZohoNoteAuthor.addEventListener('change', updateZohoNoteTitlePreview);
+  if (selectZohoNoteAction) selectZohoNoteAction.addEventListener('change', updateZohoNoteTitlePreview);
+
+  if (btnReloadPopTemplate) {
+    btnReloadPopTemplate.addEventListener('click', () => {
+      if (!currentClient) return;
+      const author = selectZohoNoteAuthor ? selectZohoNoteAuthor.value : (currentUser ? currentUser.name : 'Equipa SURE');
+      const action = selectZohoNoteAction ? selectZohoNoteAction.value : 'Troca de Mensagens';
+      const channel = selectZohoNoteChannel ? selectZohoNoteChannel.value : 'WhatsApp';
+      if (inputZohoNoteContent) {
+        inputZohoNoteContent.value = generatePopNoteTemplate(currentClient, author, action, channel);
+      }
+      showToast('Modelo POP 00.05.05 reposto com sucesso!');
+    });
+  }
+
+  if (btnSyncZohoApi) {
+    btnSyncZohoApi.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const origHtml = btnSyncZohoApi.innerHTML;
+      btnSyncZohoApi.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      btnSyncZohoApi.disabled = true;
+      showToast('A sincronizar com Zoho CRM em tempo real... ⏳');
+
+      try {
+        const res = await fetch('/api/zoho/sync', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`🎉 Zoho CRM Sincronizado: +${data.added_count} novos, ${data.updated_count} atualizados!`, 'success');
+          await loadConsultants();
+          await loadAssistants();
+          await loadClients();
+          if (currentClient) {
+            const updatedCurr = clients.find(c => c.id === currentClient.id);
+            if (updatedCurr) selectClient(updatedCurr);
+          }
+        } else {
+          showToast('Erro ao sincronizar com Zoho: ' + (data.error || 'Verifique as credenciais'), 'error');
+        }
+      } catch (err) {
+        showToast('Erro de comunicação ao sincronizar Zoho CRM', 'error');
+      } finally {
+        btnSyncZohoApi.innerHTML = origHtml;
+        btnSyncZohoApi.disabled = false;
+      }
+    });
+  }
+
+  function showZohoNoteModal(client) {
+    if (!client || !client.zoho_id || !modalZohoNote) return;
+    if (zohoNoteClientName) zohoNoteClientName.textContent = client.name || 'Cliente';
+
+    // Populate Author dropdown with active user, assistants and consultants
+    if (selectZohoNoteAuthor) {
+      selectZohoNoteAuthor.innerHTML = '';
+      const authorsSet = new Map();
+      if (currentUser && currentUser.name) authorsSet.set(currentUser.name, currentUser.name);
+      assistants.forEach(a => { if (a.name && !a.name.startsWith('Geral')) authorsSet.set(a.name, a.name); });
+      consultants.forEach(c => { if (c.name && !c.name.startsWith('Geral')) authorsSet.set(c.name, c.name); });
+      authorsSet.set('Equipa SURE', 'Equipa SURE');
+
+      authorsSet.forEach((label, val) => {
+        const opt = document.createElement('option');
+        opt.value = val;
+        opt.textContent = label;
+        selectZohoNoteAuthor.appendChild(opt);
+      });
+
+      // Default to active user name or client's assigned assistant
+      const defaultAuthor = (currentUser && currentUser.name && !currentUser.name.startsWith('Geral'))
+        ? currentUser.name
+        : ((assistants.find(a => a.id === client.assistant_id) || {}).name || 'João Santos');
+      selectZohoNoteAuthor.value = defaultAuthor;
+    }
+
+    if (selectZohoNoteAction) selectZohoNoteAction.value = 'Troca de Mensagens';
+    if (selectZohoNoteChannel) selectZohoNoteChannel.value = 'WhatsApp';
+
+    updateZohoNoteTitlePreview();
+
+    const author = selectZohoNoteAuthor ? selectZohoNoteAuthor.value : (currentUser ? currentUser.name : 'Equipa SURE');
+    if (inputZohoNoteContent) {
+      inputZohoNoteContent.value = generatePopNoteTemplate(client, author, 'Troca de Mensagens', 'WhatsApp');
+      inputZohoNoteContent.focus();
+    }
+    modalZohoNote.classList.remove('hidden');
+  }
+
+  if (btnCloseZohoNoteModal) {
+    btnCloseZohoNoteModal.addEventListener('click', () => {
+      if (modalZohoNote) modalZohoNote.classList.add('hidden');
+    });
+  }
+  if (btnCancelZohoNote) {
+    btnCancelZohoNote.addEventListener('click', () => {
+      if (modalZohoNote) modalZohoNote.classList.add('hidden');
+    });
+  }
+
+  if (btnSubmitZohoNote) {
+    btnSubmitZohoNote.addEventListener('click', async () => {
+      if (!currentClient || !currentClient.zoho_id) {
+        showToast('Nenhum cliente do Zoho CRM selecionado', 'error');
+        return;
+      }
+      const author = selectZohoNoteAuthor ? selectZohoNoteAuthor.value : (currentUser ? currentUser.name : 'Equipa SURE');
+      const action = selectZohoNoteAction ? selectZohoNoteAction.value : 'Troca de Mensagens';
+      const channel = selectZohoNoteChannel ? selectZohoNoteChannel.value : 'WhatsApp';
+      const content = inputZohoNoteContent ? inputZohoNoteContent.value.trim() : '';
+
+      if (!content) {
+        showToast('Por favor introduza o conteúdo da nota a gravar', 'error');
+        return;
+      }
+
+      btnSubmitZohoNote.disabled = true;
+      btnSubmitZohoNote.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A gravar...';
+
+      try {
+        const res = await fetch('/api/zoho/note', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deal_id: currentClient.zoho_id,
+            author_name: author,
+            action: action,
+            channel: channel,
+            content: content,
+            client_id: currentClient.id
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`Nota registada no Zoho CRM (${author} — ${action})! 🎉`, 'success');
+          if (modalZohoNote) modalZohoNote.classList.add('hidden');
+        } else {
+          showToast('Erro ao gravar nota no Zoho: ' + (data.error || 'Falha na API'), 'error');
+        }
+      } catch (err) {
+        showToast('Erro de comunicação ao gravar nota no Zoho', 'error');
+      } finally {
+        btnSubmitZohoNote.disabled = false;
+        btnSubmitZohoNote.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Gravar Nota no Zoho CRM';
+      }
+    });
   }
 
   // ── GOOGLE DRIVE INTEGRATION ───────────────────────────────────────────────
@@ -1875,6 +2953,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (err) {
         showToast('Falha na comunicação com o servidor', 'error');
+      }
+    });
+  }
+
+  const btnSyncCloudClients = document.getElementById('btn-sync-cloud-clients');
+  if (btnSyncCloudClients) {
+    btnSyncCloudClients.addEventListener('click', async () => {
+      showToast('A sincronizar clientes da Google Drive... ⏳');
+      try {
+        const res = await fetch('/api/drive/sync-master-clients');
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || `🎉 ${data.count} clientes sincronizados da Drive!`);
+          await loadConsultants();
+          await loadClients();
+        } else {
+          showToast(data.error || 'Erro ao sincronizar clientes da Drive', 'error');
+        }
+      } catch (e) {
+        showToast('Erro de comunicação ao sincronizar', 'error');
+      }
+    });
+  }
+
+  const btnPushCloudClients = document.getElementById('btn-push-cloud-clients');
+  if (btnPushCloudClients) {
+    btnPushCloudClients.addEventListener('click', async () => {
+      showToast('A enviar clientes para a Google Drive... ⏳');
+      try {
+        const res = await fetch('/api/drive/push-all-clients', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message || '🎉 Clientes enviados para a Drive!');
+        } else {
+          showToast(data.error || 'Erro ao enviar clientes para a Drive', 'error');
+        }
+      } catch (e) {
+        showToast('Erro de comunicação ao enviar', 'error');
       }
     });
   }
@@ -1952,12 +3068,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btnFolder.style.background = '';
     btnFolder.style.color = '';
     btnFolder.style.borderColor = '';
-    if (labelFolder) labelFolder.textContent = 'Verificar Pasta...';
+    if (labelFolder) labelFolder.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A verificar...';
 
     btnWord.style.background = '';
     btnWord.style.color = '';
     btnWord.style.borderColor = '';
-    if (labelWord) labelWord.textContent = 'Criar Word';
+    if (labelWord) labelWord.innerHTML = '<i class="fa-solid fa-file-word"></i> Criar Word';
 
     try {
       const res = await fetch(`/api/drive/client-status/${currentClient.id}`);
@@ -1967,28 +3083,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 1. Estado da Pasta (Fica VERDE se já estiver criada)
         if (clientDriveStatus.folder_exists) {
-          if (labelFolder) labelFolder.innerHTML = '<i class="fa-solid fa-check"></i> Pasta Criada';
+          if (labelFolder) labelFolder.innerHTML = '<i class="fa-solid fa-circle-check"></i> Pasta Criada';
           btnFolder.style.background = '#2e7d32';
           btnFolder.style.color = '#ffffff';
           btnFolder.style.borderColor = '#2e7d32';
+          btnFolder.title = `Pasta Google Drive: "${clientDriveStatus.folder_name || currentClient.name}" (Clique para abrir)`;
         } else {
-          if (labelFolder) labelFolder.textContent = 'Criar Pasta';
+          if (labelFolder) labelFolder.innerHTML = '<i class="fa-solid fa-folder-plus"></i> Criar Pasta';
           btnFolder.style.background = '';
           btnFolder.style.color = '';
           btnFolder.style.borderColor = '';
+          btnFolder.title = 'Criar pasta do cliente no Google Drive';
         }
 
         // 2. Estado do Word (Fica AZUL se já estiver criado)
         if (clientDriveStatus.word_exists) {
-          if (labelWord) labelWord.innerHTML = '<i class="fa-solid fa-check"></i> Word Criado';
+          if (labelWord) labelWord.innerHTML = '<i class="fa-solid fa-file-circle-check"></i> Word Criado';
           btnWord.style.background = '#1976d2';
           btnWord.style.color = '#ffffff';
           btnWord.style.borderColor = '#1976d2';
+          btnWord.title = `Ficha Docs: "${clientDriveStatus.word_name || 'Ficha'}" (Clique para abrir)`;
         } else {
-          if (labelWord) labelWord.textContent = 'Criar Word';
+          if (labelWord) labelWord.innerHTML = '<i class="fa-solid fa-file-word"></i> Criar Word';
           btnWord.style.background = '';
           btnWord.style.color = '';
           btnWord.style.borderColor = '';
+          btnWord.title = 'Gerar Ficha de Cliente em Google Docs/Word';
         }
 
         // 3. Botão de Consultar Pasta na Drive
@@ -2002,6 +3122,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     } catch (err) {
       console.warn('Aviso ao consultar status do cliente na Drive:', err);
+      if (labelFolder) labelFolder.innerHTML = '<i class="fa-solid fa-folder-plus"></i> Criar Pasta';
+      if (labelWord) labelWord.innerHTML = '<i class="fa-solid fa-file-word"></i> Criar Word';
     }
   }
 
@@ -2012,9 +3134,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Selecione um cliente primeiro', 'error');
         return;
       }
-      if (clientDriveStatus && clientDriveStatus.folder_exists) {
-        showToast('A pasta já existe no Google Drive! A abrir... 📁', 'success');
-        if (clientDriveStatus.folder_url) window.open(clientDriveStatus.folder_url, '_blank');
+      if (clientDriveStatus && clientDriveStatus.folder_exists && clientDriveStatus.folder_url) {
+        showToast('A abrir pasta no Google Drive... 📁', 'success');
+        window.open(clientDriveStatus.folder_url, '_blank');
         return;
       }
 
@@ -2029,6 +3151,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.success) {
           showToast(`Pasta de ${currentClient.name} criada com sucesso! 🎉`, 'success');
           await refreshClientDriveStatus();
+          if (data.result && data.result.folder_url) {
+            window.open(data.result.folder_url, '_blank');
+          }
         } else {
           showToast('Erro ao criar pasta: ' + (data.error || 'Verifique o Webhook'), 'error');
         }
@@ -2062,7 +3187,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.success && data.docResult) {
           showToast('Ficha de Cliente criada na Drive com sucesso! 🎉', 'success');
           await refreshClientDriveStatus();
-          if (data.docResult.link) window.open(data.docResult.link, '_blank');
+          const docLink = data.docResult.link || data.docResult.doc_url;
+          if (docLink) window.open(docLink, '_blank');
         } else {
           showToast('Erro ao criar Word: ' + (data.error || 'Verifique o Webhook'), 'error');
         }
@@ -2081,14 +3207,33 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentVisitsFilter = 'all';
 
   async function loadVisits() {
+    let localVisits = getLocalData(STORAGE_KEYS.VISITS, []);
     try {
       const res = await fetch('/api/visits');
-      visits = await res.json();
-      updateVisitsBadge();
-      renderVisitsCards(currentVisitsFilter);
+      if (res.ok) {
+        const serverVisits = await res.json();
+        if (Array.isArray(serverVisits) && serverVisits.length > 0) {
+          visits = serverVisits;
+        } else if (localVisits.length > 0) {
+          visits = localVisits;
+          fetch('/api/sync-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visits: localVisits })
+          }).catch(() => {});
+        } else {
+          visits = [];
+        }
+      } else if (localVisits.length > 0) {
+        visits = localVisits;
+      }
     } catch (err) {
-      console.warn('Aviso ao carregar visitas:', err);
+      if (localVisits.length > 0) visits = localVisits;
     }
+    setLocalData(STORAGE_KEYS.VISITS, visits);
+    updateVisitsBadge();
+    renderVisitsCards(currentVisitsFilter);
+    updateBackupStats();
   }
 
   function updateVisitsBadge() {
@@ -2118,19 +3263,20 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function populateVisitsSelects() {
-    // Populate Clients
+    // Populate Clients (only clients this administrative is allowed to see)
     if (visitClientSelect) {
       const currentSelected = visitClientSelect.value;
       visitClientSelect.innerHTML = '<option value="">-- Selecione o Cliente --</option>';
-      clients.forEach(c => {
+      const allowed = getAllowedClients();
+      allowed.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id;
         opt.textContent = `${c.name} (${c.location || 'Sem zona'})`;
         visitClientSelect.appendChild(opt);
       });
-      if (currentClient) {
+      if (currentClient && allowed.some(c => c.id === currentClient.id)) {
         visitClientSelect.value = currentClient.id;
-      } else if (currentSelected) {
+      } else if (currentSelected && allowed.some(c => c.id === currentSelected)) {
         visitClientSelect.value = currentSelected;
       }
     }
@@ -2174,12 +3320,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (visitConsultantSelect && prefill.client.consultant_id) {
         visitConsultantSelect.value = prefill.client.consultant_id;
       }
+    } else if (currentClient) {
+      if (visitClientSelect) visitClientSelect.value = currentClient.id;
+      if (visitConsultantSelect && currentClient.consultant_id) {
+        visitConsultantSelect.value = currentClient.consultant_id;
+      }
     }
 
     if (prefill.listing) {
       const l = prefill.listing;
       if (visitListingTitle) visitListingTitle.value = l.title || 'Imóvel para Visita';
-      if (visitLocation) visitLocation.value = l.location || (prefill.client ? prefill.client.location : '');
+      if (visitLocation) visitLocation.value = l.location || (prefill.client ? prefill.client.location : (currentClient ? currentClient.location : ''));
       if (visitPrice) visitPrice.value = l.price || (l.price_num ? l.price_num.toLocaleString('pt-PT') + ' €' : '');
       if (visitLink) visitLink.value = l.link || '';
     } else if (prefill.title) {
@@ -2187,12 +3338,19 @@ document.addEventListener('DOMContentLoaded', () => {
       if (visitLocation) visitLocation.value = prefill.location || '';
       if (visitPrice) visitPrice.value = prefill.price || '';
       if (visitLink) visitLink.value = prefill.link || '';
+    } else {
+      if (visitListingTitle) visitListingTitle.value = '';
+      if (visitLocation) visitLocation.value = currentClient ? currentClient.location : '';
+      if (visitPrice) visitPrice.value = '';
+      if (visitLink) visitLink.value = '';
+      if (visitNotes) visitNotes.value = '';
+      if (visitContact) visitContact.value = '';
     }
 
     // Switch to new visit tab
     switchVisitsTab('new');
 
-    if (modalVisits) modalVisits.classList.remove('hidden');
+    showModal(modalVisits);
   }
 
   function openVisitModalForListing(listing) {
@@ -2204,15 +3362,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function switchVisitsTab(tab) {
     if (tab === 'new') {
-      tabBtnNewVisit.classList.add('active');
-      tabBtnListVisits.classList.remove('active');
-      tabPaneNewVisit.classList.remove('hidden');
-      tabPaneListVisits.classList.add('hidden');
+      if (tabBtnNewVisit) tabBtnNewVisit.classList.add('active');
+      if (tabBtnListVisits) tabBtnListVisits.classList.remove('active');
+      if (tabPaneNewVisit) tabPaneNewVisit.classList.remove('hidden');
+      if (tabPaneListVisits) tabPaneListVisits.classList.add('hidden');
     } else {
-      tabBtnNewVisit.classList.remove('active');
-      tabBtnListVisits.classList.add('active');
-      tabPaneNewVisit.classList.add('hidden');
-      tabPaneListVisits.classList.remove('hidden');
+      if (tabBtnNewVisit) tabBtnNewVisit.classList.remove('active');
+      if (tabBtnListVisits) tabBtnListVisits.classList.add('active');
+      if (tabPaneNewVisit) tabPaneNewVisit.classList.add('hidden');
+      if (tabPaneListVisits) tabPaneListVisits.classList.remove('hidden');
       renderVisitsCards(currentVisitsFilter);
     }
   }
@@ -2249,17 +3407,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const location = visitData.location || '';
 
     // Calculate dates in YYYYMMDDTHHmmSSZ format (or local YYYYMMDDTHHmmSS)
-    const datePart = (visitData.date || '').replace(/-/g, '');
+    const datePart = (visitData.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '');
     const timePart = (visitData.time || '10:00').replace(/:/g, '') + '00';
     const startStr = `${datePart}T${timePart}`;
 
-    const durationMin = parseInt(visitData.duration || 60, 10);
-    const startObj = new Date(`${visitData.date}T${visitData.time || '10:00'}:00`);
-    const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
-
-    const endDatePart = `${endObj.getFullYear()}${String(endObj.getMonth() + 1).padStart(2, '0')}${String(endObj.getDate()).padStart(2, '0')}`;
-    const endTimePart = `${String(endObj.getHours()).padStart(2, '0')}${String(endObj.getMinutes()).padStart(2, '0')}00`;
-    const endStr = `${endDatePart}T${endTimePart}`;
+    let endStr = startStr;
+    try {
+      const durationMin = parseInt(visitData.duration || 60, 10) || 60;
+      const startObj = new Date(`${visitData.date || new Date().toISOString().slice(0, 10)}T${visitData.time || '10:00'}:00`);
+      if (!isNaN(startObj.getTime())) {
+        const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
+        const endDatePart = `${endObj.getFullYear()}${String(endObj.getMonth() + 1).padStart(2, '0')}${String(endObj.getDate()).padStart(2, '0')}`;
+        const endTimePart = `${String(endObj.getHours()).padStart(2, '0')}${String(endObj.getMinutes()).padStart(2, '0')}00`;
+        endStr = `${endDatePart}T${endTimePart}`;
+      }
+    } catch (e) {}
 
     let details = `SURE. REAL ESTATE — MARCAÇÃO DE VISITA\n`;
     details += `──────────────────────────────────────────────\n`;
@@ -2293,9 +3455,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const link = visitLink ? visitLink.value.trim() : '';
     const notes = visitNotes ? visitNotes.value.trim() : '';
 
-    const startObj = new Date(`${date}T${time}:00`);
-    const durationMin = parseInt(duration, 10);
-    const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
+    let startIso = new Date().toISOString();
+    let endIso = new Date(Date.now() + 3600000).toISOString();
+    try {
+      if (date) {
+        const startObj = new Date(`${date}T${time || '15:00'}:00`);
+        if (!isNaN(startObj.getTime())) {
+          startIso = startObj.toISOString();
+          const durationMin = parseInt(duration, 10) || 60;
+          const endObj = new Date(startObj.getTime() + durationMin * 60 * 1000);
+          endIso = endObj.toISOString();
+        }
+      }
+    } catch (e) {}
 
     return {
       client_id: selectedClientId,
@@ -2307,8 +3479,8 @@ document.addEventListener('DOMContentLoaded', () => {
       date: date,
       time: time,
       duration: duration,
-      start_time: startObj.toISOString(),
-      end_time: endObj.toISOString(),
+      start_time: startIso,
+      end_time: endIso,
       location: location,
       price: price,
       contact: contact,
@@ -2524,6 +3696,250 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // ── TODOIST CRM & TASK INTEGRATION ─────────────────────────────────────────
+  const btnTodoistSettings = document.getElementById('btn-todoist-settings');
+  const modalTodoist = document.getElementById('modal-todoist');
+  const btnCloseTodoistModal = document.getElementById('btn-close-todoist-modal');
+  const formTodoistConfig = document.getElementById('form-todoist-config');
+  const inputTodoistToken = document.getElementById('input-todoist-token');
+  const inputTodoistFeedbackProject = document.getElementById('input-todoist-feedback-project');
+  const inputTodoistAdminProject = document.getElementById('input-todoist-admin-project');
+  const inputTodoistFeedbackDays = document.getElementById('input-todoist-feedback-days');
+  const btnTestTodoist = document.getElementById('btn-test-todoist');
+  const btnSyncTodoistOverdue = document.getElementById('btn-sync-todoist-overdue');
+  const btnSaveTodoist = document.getElementById('btn-save-todoist');
+
+  const todoistStatusBadge = document.getElementById('todoist-status-badge');
+  const todoistStatusIcon = document.getElementById('todoist-status-icon');
+  const todoistStatusTitle = document.getElementById('todoist-status-title');
+  const todoistStatusDesc = document.getElementById('todoist-status-desc');
+
+  async function checkTodoistStatus() {
+    try {
+      const res = await fetch('/api/todoist/status');
+      const data = await res.json();
+      if (data.configured) {
+        if (todoistStatusBadge) {
+          todoistStatusBadge.style.background = '#f0fff4';
+          todoistStatusBadge.style.borderColor = '#c6f6d5';
+        }
+        if (todoistStatusIcon) {
+          todoistStatusIcon.className = 'fa-solid fa-circle-check';
+          todoistStatusIcon.style.color = '#276749';
+        }
+        if (todoistStatusTitle) {
+          todoistStatusTitle.textContent = 'Todoist Conectado & Ativo';
+          todoistStatusTitle.style.color = '#22543d';
+        }
+        const projCount = data.projects ? data.projects.length : 0;
+        if (todoistStatusDesc) {
+          todoistStatusDesc.textContent = `${projCount} projetos sincronizados. Tarefas de feedback em #${data.feedback_project_name || 'Geral'} e atrasos em #${data.admin_project_name || 'Administrativo'}.`;
+        }
+        if (data.feedback_project_name && inputTodoistFeedbackProject) {
+          inputTodoistFeedbackProject.value = data.feedback_project_name;
+        }
+        if (data.admin_project_name && inputTodoistAdminProject) {
+          inputTodoistAdminProject.value = data.admin_project_name;
+        }
+        if (data.feedback_due_days && inputTodoistFeedbackDays) {
+          inputTodoistFeedbackDays.value = data.feedback_due_days;
+        }
+      } else {
+        if (todoistStatusBadge) {
+          todoistStatusBadge.style.background = '#fff5f5';
+          todoistStatusBadge.style.borderColor = '#fed7d7';
+        }
+        if (todoistStatusIcon) {
+          todoistStatusIcon.className = 'fa-solid fa-triangle-exclamation';
+          todoistStatusIcon.style.color = '#e53e3e';
+        }
+        if (todoistStatusTitle) {
+          todoistStatusTitle.textContent = 'Todoist Não Configurado';
+          todoistStatusTitle.style.color = '#9b2c2c';
+        }
+        if (todoistStatusDesc) {
+          todoistStatusDesc.textContent = 'Insira o seu API Token abaixo para ligar.';
+        }
+      }
+    } catch (e) {
+      console.warn('Aviso ao verificar Todoist:', e);
+    }
+  }
+
+  if (btnTodoistSettings) {
+    btnTodoistSettings.addEventListener('click', () => {
+      checkTodoistStatus();
+      if (modalTodoist) modalTodoist.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseTodoistModal) {
+    btnCloseTodoistModal.addEventListener('click', () => {
+      if (modalTodoist) modalTodoist.classList.add('hidden');
+    });
+  }
+
+  if (btnTestTodoist) {
+    btnTestTodoist.addEventListener('click', async () => {
+      btnTestTodoist.disabled = true;
+      btnTestTodoist.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A testar...';
+      try {
+        const token = inputTodoistToken ? inputTodoistToken.value.trim() : '';
+        if (token) {
+          await fetch('/api/todoist/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_token: token })
+          });
+        }
+        const res = await fetch('/api/todoist/test', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✅ Ligação bem sucedida! ${data.projectsCount} projetos encontrados no Todoist.`);
+          checkTodoistStatus();
+        } else {
+          showToast(`❌ Erro de ligação: ${data.error || 'Token inválido'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Erro ao testar: ${err.message}`, 'error');
+      } finally {
+        btnTestTodoist.disabled = false;
+        btnTestTodoist.innerHTML = '<i class="fa-solid fa-vial"></i> Testar Ligação';
+      }
+    });
+  }
+
+  if (btnSyncTodoistOverdue) {
+    btnSyncTodoistOverdue.addEventListener('click', async () => {
+      btnSyncTodoistOverdue.disabled = true;
+      btnSyncTodoistOverdue.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A sincronizar...';
+      try {
+        const res = await fetch('/api/todoist/sync-overdue', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`🎉 ${data.created_count} tarefas de atraso criadas no #Administrativo para os administrativos responsáveis!`);
+        } else {
+          showToast(`Aviso: ${data.reason || data.error || 'Nenhum atraso pendente de sincronização.'}`);
+        }
+      } catch (err) {
+        showToast(`Erro ao sincronizar: ${err.message}`, 'error');
+      } finally {
+        btnSyncTodoistOverdue.disabled = false;
+        btnSyncTodoistOverdue.innerHTML = '<i class="fa-solid fa-clock-rotate-left"></i> Sincronizar Atrasos Agora';
+      }
+    });
+  }
+
+  if (btnSaveTodoist) {
+    btnSaveTodoist.addEventListener('click', async () => {
+      btnSaveTodoist.disabled = true;
+      btnSaveTodoist.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A guardar...';
+      try {
+        const payload = {
+          api_token: inputTodoistToken ? inputTodoistToken.value.trim() : '',
+          feedback_project_name: inputTodoistFeedbackProject ? (inputTodoistFeedbackProject.value.trim() || 'Geral') : 'Geral',
+          admin_project_name: inputTodoistAdminProject ? (inputTodoistAdminProject.value.trim() || 'Administrativo') : 'Administrativo',
+          feedback_due_days: inputTodoistFeedbackDays ? (Number(inputTodoistFeedbackDays.value) || 2) : 2
+        };
+        const res = await fetch('/api/todoist/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✅ Configurações do Todoist guardadas com sucesso!');
+          checkTodoistStatus();
+          if (modalTodoist) modalTodoist.classList.add('hidden');
+        }
+      } catch (err) {
+        showToast(`Erro ao guardar: ${err.message}`, 'error');
+      } finally {
+        btnSaveTodoist.disabled = false;
+        btnSaveTodoist.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Guardar';
+      }
+    });
+  }
+
+  // ── CHANGE PASSWORD MODAL ──────────────────────────────────────────────────
+  const btnOpenChangePassword = document.getElementById('btn-open-change-password');
+  const modalChangePassword = document.getElementById('modal-change-password');
+  const btnCloseChangePasswordModal = document.getElementById('btn-close-change-password-modal');
+  const formChangePassword = document.getElementById('form-change-password');
+  const changePassUsername = document.getElementById('change-pass-username');
+  const inputCurrentPass = document.getElementById('input-current-pass');
+  const inputNewPass = document.getElementById('input-new-pass');
+  const inputConfirmNewPass = document.getElementById('input-confirm-new-pass');
+  const btnSubmitChangePassword = document.getElementById('btn-submit-change-password');
+
+  if (btnOpenChangePassword) {
+    btnOpenChangePassword.addEventListener('click', () => {
+      const activeUser = currentUser || { username: 'geral', name: 'Geral' };
+      if (changePassUsername) changePassUsername.textContent = `${activeUser.name} (${activeUser.username})`;
+      if (inputCurrentPass) inputCurrentPass.value = '';
+      if (inputNewPass) inputNewPass.value = '';
+      if (inputConfirmNewPass) inputConfirmNewPass.value = '';
+      if (modalChangePassword) modalChangePassword.classList.remove('hidden');
+    });
+  }
+
+  if (btnCloseChangePasswordModal) {
+    btnCloseChangePasswordModal.addEventListener('click', () => {
+      if (modalChangePassword) modalChangePassword.classList.add('hidden');
+    });
+  }
+
+  if (btnSubmitChangePassword) {
+    btnSubmitChangePassword.addEventListener('click', async () => {
+      const activeUser = currentUser || { username: 'geral', id: 'assistant-geral' };
+      const currentPass = inputCurrentPass ? inputCurrentPass.value.trim() : '';
+      const newPass = inputNewPass ? inputNewPass.value.trim() : '';
+      const confirmPass = inputConfirmNewPass ? inputConfirmNewPass.value.trim() : '';
+
+      if (!currentPass) {
+        showToast('Por favor insira a palavra-passe atual.', 'error');
+        return;
+      }
+      if (!newPass || newPass.length < 3) {
+        showToast('A nova palavra-passe deve ter pelo menos 3 caracteres.', 'error');
+        return;
+      }
+      if (newPass !== confirmPass) {
+        showToast('A nova palavra-passe e a confirmação não coincidem.', 'error');
+        return;
+      }
+
+      btnSubmitChangePassword.disabled = true;
+      btnSubmitChangePassword.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A guardar...';
+
+      try {
+        const res = await fetch('/api/auth/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: activeUser.id,
+            username: activeUser.username,
+            current_password: currentPass,
+            new_password: newPass
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast('✅ Palavra-passe alterada com sucesso!');
+          if (modalChangePassword) modalChangePassword.classList.add('hidden');
+        } else {
+          showToast(`❌ Erro: ${data.error || 'Não foi possível alterar'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Erro de rede: ${err.message}`, 'error');
+      } finally {
+        btnSubmitChangePassword.disabled = false;
+        btnSubmitChangePassword.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Guardar Nova Palavra-passe';
+      }
+    });
+  }
+
   // Load visits on application startup
   loadVisits();
+  checkTodoistStatus();
 });

@@ -1,9 +1,52 @@
+# Dependencies
 node_modules/
-.system_generated/
-*.log
-data/bot_persistent_profile/
-data/bot_sessions/
-data/sure_browser_profile/
-data/last_html_debug.html
-test_url.html
+.pnp
+.pnp.js
+
+# Environment and Secrets (CRITICAL: Never commit credentials)
 .env
+.env.*
+!.env.example
+data/google_credentials.json
+data/google_webhook.json
+data/bot_cookies.json
+
+# Chromium / Playwright profiles and browser cache (Prevents GitHub 100MB file limit errors)
+data/bot_persistent_profile/
+data/sure_browser_profile/
+data/bot_sessions/
+.playwright/
+.cache/
+
+# Debug and dump files
+data/*.html
+data/last_html_debug.html
+data/zome_sample.html
+*.html_dump
+temp_*.html
+test_*.html
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+out.log
+
+# Live operational CRM Data & Listings
+data/listings.json
+data/visits.json
+
+# Deploy and temporary build folders
+PASTA_DEPLOY_VERCEL/
+UPLOAD_GITHUB/
+*.zip
+*.tar.gz
+*.tgz
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.system_generated/

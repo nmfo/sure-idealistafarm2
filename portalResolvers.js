@@ -1,4 +1,4 @@
-const { resolveIdealistaLocation } = require('./geoResolver');
+const { resolveIdealistaLocation, resolveAllIdealistaLocations } = require('./geoResolver');
 const { buildLocationUrl } = require('./scraper');
 
 function normalizeTypologiesList(typology) {
@@ -14,6 +14,33 @@ function extractRoomsCount(typologies) {
     if (m) nums.push(parseInt(m[1], 10));
   });
   return nums;
+}
+
+// Escala de preços padrão e dropdown da RE/MAX Portugal
+const REMAX_PRICE_STEPS = [
+  50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000, 
+  150000, 160000, 170000, 180000, 190000, 200000, 220000, 240000, 260000, 280000, 
+  300000, 350000, 400000, 450000, 500000, 550000, 600000, 650000, 700000, 750000, 
+  800000, 850000, 900000, 1000000, 1250000, 1500000, 1750000, 2000000, 2500000, 
+  3000000, 4000000, 5000000
+];
+
+/**
+ * Aproxima qualquer orçamento do cliente ao patamar oficial mais próximo da RE/MAX
+ */
+function snapToRemaxPrice(val, isMax = true) {
+  if (!val || isNaN(val) || Number(val) <= 0) return null;
+  const num = Number(val);
+  let closest = REMAX_PRICE_STEPS[0];
+  let minDiff = Math.abs(num - closest);
+  for (const p of REMAX_PRICE_STEPS) {
+    const diff = Math.abs(num - p);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = p;
+    }
+  }
+  return closest;
 }
 
 // Mapeamento exaustivo de Concelhos para Distritos oficiais em Portugal (Zome SEO path)
@@ -165,10 +192,12 @@ function buildRemaxUrl(criteria) {
 
   const queryParams = [];
   if (criteria.min_price && !isNaN(criteria.min_price) && Number(criteria.min_price) > 0) {
-    queryParams.push(`preco_min=${Number(criteria.min_price)}`);
+    const snappedMin = snapToRemaxPrice(criteria.min_price, false);
+    if (snappedMin) queryParams.push(`preco_min=${snappedMin}`);
   }
   if (criteria.max_price && !isNaN(criteria.max_price) && Number(criteria.max_price) > 0) {
-    queryParams.push(`preco_max=${Number(criteria.max_price)}`);
+    const snappedMax = snapToRemaxPrice(criteria.max_price, true);
+    if (snappedMax) queryParams.push(`preco_max=${snappedMax}`);
   }
   if (criteria.min_area && !isNaN(criteria.min_area) && Number(criteria.min_area) > 0) {
     queryParams.push(`area_min=${Number(criteria.min_area)}`);
@@ -284,14 +313,27 @@ function buildArysUrl(criteria) {
 }
 
 /**
- * Retorna todos os links de portais disponíveis para o cliente
+ * Retorna todos os links de portais disponíveis para o cliente com suporte a multi-localizações
  */
 function getAllPortalUrls(client) {
+  const locations = resolveAllIdealistaLocations(client.location);
+  const idealistaUrls = locations.map(loc => buildLocationUrl({ ...client, location: loc }));
+  const remaxUrls = locations.map(loc => buildRemaxUrl({ ...client, location: loc }));
+  const zomeUrls = locations.map(loc => buildZomeUrl({ ...client, location: loc }));
+  const arysUrls = locations.map(loc => buildArysUrl({ ...client, location: loc }));
+
   return {
-    idealista: client.custom_search_url || buildLocationUrl(client),
-    remax: buildRemaxUrl(client),
-    zome: buildZomeUrl(client),
-    arys: buildArysUrl(client)
+    idealista: client.custom_search_url || idealistaUrls[0],
+    remax: remaxUrls[0],
+    zome: zomeUrls[0],
+    arys: arysUrls[0],
+    locations: locations,
+    all_urls: {
+      idealista: idealistaUrls,
+      remax: remaxUrls,
+      zome: zomeUrls,
+      arys: arysUrls
+    }
   };
 }
 

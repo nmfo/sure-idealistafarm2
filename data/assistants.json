@@ -1,0 +1,34 @@
+[
+  {
+    "id": "assistant-geral",
+    "name": "Geral / Administração",
+    "username": "geral",
+    "password": "123",
+    "role": "admin",
+    "color": "#938C85"
+  },
+  {
+    "id": "assistant-nuno",
+    "name": "Nuno Oliveira",
+    "username": "Nuno Oliveira",
+    "password": "nuno123",
+    "role": "staff",
+    "color": "#C75233"
+  },
+  {
+    "id": "assistant-pedro",
+    "name": "Pedro Barros",
+    "username": "Pedro Barros",
+    "password": "pedro123",
+    "role": "staff",
+    "color": "#5B8C6A"
+  },
+  {
+    "id": "assistant-joao",
+    "name": "João Santos",
+    "username": "João Santos",
+    "password": "joao123",
+    "role": "staff",
+    "color": "#5B7FA6"
+  }
+]

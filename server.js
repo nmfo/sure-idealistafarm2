@@ -2,9 +2,12 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const clientManager = require('./clientManager');
+const googleDriveService = require('./googleDriveService');
 const { parseListingsHtml, fetchDirectListingFromUrl } = require('./scraper');
 const { runAutoSearchBot, fetchDirectListingWithBrowser } = require('./bot');
 const { parseZohoExcel } = require('./importer');
+const zohoService = require('./zohoService');
+const todoistService = require('./todoistService');
 
 process.on('uncaughtException', (err) => {
   console.error('⚠️ [SERVER SAFEGUARD] Exceção capturada:', err.message);
@@ -35,6 +38,125 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── ZOHO CRM DIRECT INTEGRATION API ──────────────────────────────────────────
+app.get('/api/zoho/status', (req, res) => {
+  res.json({
+    configured: zohoService.isConfigured(),
+    api_domain: zohoService.config.api_domain,
+    has_token: !!zohoService.config.access_token,
+    expires_at: zohoService.config.expires_at
+  });
+});
+
+app.post('/api/zoho/sync', async (req, res) => {
+  try {
+    const result = await zohoService.syncDealsToClients(clientManager);
+    res.json(result);
+  } catch (err) {
+    console.error('Erro ao sincronizar com Zoho CRM:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/zoho/note', async (req, res) => {
+  const { deal_id, title, content, author_name, action, client_id, channel, next_action, next_responsible, next_due_date } = req.body;
+  if (!deal_id || !content) {
+    return res.status(400).json({ error: 'deal_id e content são obrigatórios' });
+  }
+  try {
+    let finalTitle = title;
+    let finalContent = content;
+
+    if (author_name || action) {
+      const client = client_id ? clientManager.getClient(client_id) : null;
+      const consultants = clientManager.getConsultants();
+      const assistants = clientManager.getAssistants();
+      const consultant = client ? consultants.find(c => c.id === client.consultant_id) : null;
+      const assistant = client ? assistants.find(a => a.id === client.assistant_id) : null;
+
+      const formatted = zohoService.formatPopNote({
+        authorName: author_name || (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE',
+        action: action || 'Troca de Mensagens',
+        client,
+        consultantName: consultant ? consultant.name : '',
+        assistantName: assistant ? assistant.name : '',
+        channel: channel || 'Idealista Farm / WhatsApp',
+        customBody: content,
+        nextAction: next_action,
+        nextResponsible: next_responsible,
+        nextDueDate: next_due_date
+      });
+      finalTitle = formatted.title;
+      finalContent = formatted.content;
+    }
+
+    const result = await zohoService.addDealNote(deal_id, finalTitle, finalContent);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/zoho/webhook', async (req, res) => {
+  try {
+    const result = await zohoService.handleWebhook(req.body, clientManager);
+    res.json(result);
+  } catch (err) {
+    console.error('Erro no webhook Zoho:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── TODOIST CRM & TASK INTEGRATION API ───────────────────────────────────────
+app.get('/api/todoist/status', async (req, res) => {
+  const configured = todoistService.isConfigured();
+  let projects = [];
+  if (configured) {
+    try {
+      projects = await todoistService.getProjects();
+    } catch (e) {}
+  }
+  res.json({
+    configured,
+    enabled: todoistService.config.enabled,
+    admin_project_name: todoistService.config.admin_project_name,
+    consultants_project_name: todoistService.config.consultants_project_name,
+    feedback_due_days: todoistService.config.feedback_due_days,
+    last_sync_at: todoistService.config.last_sync_at,
+    projects: projects.map(p => ({ id: p.id, name: p.name }))
+  });
+});
+
+app.post('/api/todoist/config', async (req, res) => {
+  const { api_token, enabled, admin_project_name, consultants_project_name, feedback_due_days } = req.body;
+  const updated = todoistService.saveConfig({
+    ...(api_token !== undefined && { api_token: String(api_token).trim() }),
+    ...(enabled !== undefined && { enabled: Boolean(enabled) }),
+    ...(admin_project_name !== undefined && { admin_project_name: String(admin_project_name).trim() }),
+    ...(consultants_project_name !== undefined && { consultants_project_name: String(consultants_project_name).trim() }),
+    ...(feedback_due_days !== undefined && { feedback_due_days: Number(feedback_due_days) || 2 })
+  });
+  res.json({ success: true, config: updated });
+});
+
+app.post('/api/todoist/test', async (req, res) => {
+  const result = await todoistService.testConnection();
+  res.json(result);
+});
+
+app.post('/api/todoist/sync-overdue', async (req, res) => {
+  try {
+    const clients = clientManager.getClients();
+    const consultants = clientManager.getConsultants();
+    const assistants = clientManager.getAssistants();
+    const result = await todoistService.syncOverdueClients(clients, consultants, assistants);
+    res.json(result);
+  } catch (err) {
+    console.error('Erro na sincronização de atrasos com Todoist:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ── ZOHO CRM EXCEL IMPORT ───────────────────────────────────────────────────
 app.post('/api/import-zoho-excel', (req, res) => {
   const { base64Data } = req.body;
@@ -52,6 +174,97 @@ app.post('/api/import-zoho-excel', (req, res) => {
     console.error('Erro ao importar Excel Zoho:', err);
     res.status(500).json({ error: 'Erro ao processar ficheiro Excel: ' + err.message });
   }
+});
+
+// ── AUTH & ASSISTANTS API ──────────────────────────────────────────────────
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username) return res.status(400).json({ error: 'Nome de utilizador / Login obrigatório' });
+  
+  const user = clientManager.authenticateAssistant(username, password);
+  if (!user) {
+    return res.status(401).json({ error: 'Utilizador ou palavra-passe incorretos' });
+  }
+
+  // Generate simple base64 session token
+  const token = Buffer.from(`${user.id}:${user.username}:${Date.now()}`).toString('base64');
+  res.json({
+    success: true,
+    user,
+    token
+  });
+});
+
+app.post('/api/auth/change-password', (req, res) => {
+  const { user_id, username, current_password, new_password } = req.body;
+  if (!new_password) {
+    return res.status(400).json({ error: 'Nova palavra-passe obrigatória' });
+  }
+  const result = clientManager.changePassword(user_id || username, current_password, new_password);
+  if (!result.success) {
+    return res.status(400).json({ error: result.error });
+  }
+  res.json({ success: true, message: result.message });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return res.status(401).json({ error: 'Não autenticado' });
+
+  try {
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [id, username] = decoded.split(':');
+    const assistant = clientManager.getAssistant(id) || clientManager.getAssistantByUsername(username);
+    if (!assistant) return res.status(401).json({ error: 'Sessão inválida ou utilizador não encontrado' });
+    
+    res.json({
+      success: true,
+      user: {
+        id: assistant.id,
+        name: assistant.name,
+        username: assistant.username,
+        role: assistant.role || (assistant.id === 'assistant-geral' ? 'admin' : 'staff'),
+        color: assistant.color || '#5B7FA6'
+      }
+    });
+  } catch (e) {
+    res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+app.get('/api/assistants', (req, res) => {
+  res.json(clientManager.getAssistants());
+});
+
+app.post('/api/assistants', (req, res) => {
+  const { id, name, username, password, role, color } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nome do administrativo obrigatório' });
+  const saved = clientManager.saveAssistant({
+    id,
+    name,
+    username,
+    password,
+    role: role || (id === 'assistant-geral' ? 'admin' : 'staff'),
+    color: color || '#5B7FA6'
+  });
+
+  // Sync to Google Drive / Sheets if active
+  try {
+    if (googleDriveService && googleDriveService.webhookUrl) {
+      googleDriveService.saveMasterAssistant(saved);
+    }
+  } catch (e) {}
+
+  res.json(saved);
+});
+
+app.delete('/api/assistants/:id', (req, res) => {
+  if (req.params.id === 'assistant-geral') {
+    return res.status(400).json({ error: 'Não é possível eliminar a conta principal Geral' });
+  }
+  const ok = clientManager.deleteAssistant(req.params.id);
+  res.json({ success: ok });
 });
 
 // ── CONSULTANTS API ──────────────────────────────────────────────────────────
@@ -72,7 +285,8 @@ app.delete('/api/consultants/:id', (req, res) => {
 
 // ── CLIENTS API ───────────────────────────────────────────────────────────────
 app.get('/api/clients', async (req, res) => {
-  const clients = clientManager.getClients();
+  const assistantId = req.query.assistant_id || null;
+  const clients = clientManager.getClients(assistantId);
   const allListings = clientManager.getListings();
 
   clients.forEach(c => {
@@ -178,6 +392,19 @@ app.post('/api/clients/reassign', (req, res) => {
     return res.status(400).json({ error: 'client_id e consultant_id são obrigatórios' });
   }
   const updated = clientManager.reassignClient(client_id, consultant_id);
+  if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
+  try {
+    if (googleDriveService.webhookUrl) googleDriveService.saveMasterClient(updated);
+  } catch(e) {}
+  res.json({ success: true, client: updated });
+});
+
+app.post('/api/clients/reassign-assistant', (req, res) => {
+  const { client_id, assistant_id } = req.body;
+  if (!client_id || !assistant_id) {
+    return res.status(400).json({ error: 'client_id e assistant_id são obrigatórios' });
+  }
+  const updated = clientManager.reassignClientAssistant(client_id, assistant_id);
   if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
   try {
     if (googleDriveService.webhookUrl) googleDriveService.saveMasterClient(updated);
@@ -487,8 +714,6 @@ app.post('/api/listings/deduplicate/:clientId', (req, res) => {
   res.json({ success: true, count: unique.length });
 });
 
-const googleDriveService = require('./googleDriveService');
-
 // Inicializar Google Drive em background
 googleDriveService.initAuth().catch(err => console.log('Aviso Google Drive:', err.message));
 
@@ -499,25 +724,66 @@ app.post('/api/listings/status', async (req, res) => {
   }
   const success = clientManager.updateListingStatus(listing_id, client_id, status);
 
-  // Se marcado como "enviado", tentar adicionar linha automaticamente no Google Sheets da Drive
+  // Se marcado como "enviado", tentar adicionar linha automaticamente no Google Sheets da Drive e nota no Zoho CRM
   let driveSync = null;
+  let zohoNoteSync = null;
   if (status === 'enviado') {
-    if (!googleDriveService.initialized) await googleDriveService.initAuth();
-    if (googleDriveService.initialized) {
-      try {
-        const client = clientManager.getClient(client_id);
-        const listings = clientManager.getListings(client_id);
-        const listing = listings.find(l => l.id === listing_id);
-        if (client && listing) {
+    const client = clientManager.getClient(client_id);
+    const listings = clientManager.getListings(client_id);
+    const listing = listings.find(l => l.id === listing_id);
+
+    if (client && listing) {
+      // 1. Google Drive / Sheets sync
+      if (!googleDriveService.initialized) await googleDriveService.initAuth();
+      if (googleDriveService.initialized) {
+        try {
           driveSync = await googleDriveService.recordSentProperty(client, listing);
+        } catch (dErr) {
+          console.warn('Aviso sincronização Drive ao mudar estado:', dErr.message);
         }
-      } catch (dErr) {
-        console.warn('Aviso sincronização Drive ao mudar estado:', dErr.message);
+      }
+
+      // 2. Zoho CRM Direct Note sync (POP 00.05.05.POP: {Colaborador} — Envio de Imóveis)
+      if (client.zoho_id && zohoService.isConfigured()) {
+        try {
+          const consultants = clientManager.getConsultants();
+          const assistants = clientManager.getAssistants();
+          const consultant = consultants.find(co => co.id === client.consultant_id);
+          const assistant = assistants.find(as => as.id === client.assistant_id);
+          const authorName = (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE';
+
+          const popNote = zohoService.formatPopNote({
+            authorName,
+            action: 'Envio de Imóveis',
+            client,
+            consultantName: consultant ? consultant.name : '',
+            assistantName: assistant ? assistant.name : '',
+            listings: [listing],
+            channel: 'Idealista Farm / WhatsApp'
+          });
+
+          zohoNoteSync = await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
+        } catch (zErr) {
+          console.warn('Aviso sincronização Zoho Note ao mudar estado:', zErr.message);
+        }
+      }
+
+      // 3. Todoist Task sync (Regra 1: Feedback do Consultor em #Geral)
+      if (todoistService.isConfigured()) {
+        try {
+          const consultants = clientManager.getConsultants();
+          const consultant = consultants.find(co => co.id === client.consultant_id);
+          todoistService.createSentFeedbackTask(client, [listing], consultant).catch(tErr => {
+            console.warn('Aviso sincronização Todoist ao mudar estado:', tErr.message);
+          });
+        } catch (tErr) {
+          console.warn('Aviso Todoist:', tErr.message);
+        }
       }
     }
   }
 
-  res.json({ success, driveSync });
+  res.json({ success, driveSync, zohoNoteSync });
 });
 
 // ── GOOGLE DRIVE & SHEETS API ────────────────────────────────────────────────
@@ -620,6 +886,43 @@ app.post('/api/drive/record-sent', async (req, res) => {
     clientManager.updateListingStatus(listing_id, client_id, 'enviado');
 
     const driveResult = await googleDriveService.recordSentProperty(client, listing, consultant_name || 'SURE Equipa');
+
+    // Zoho CRM Note sync (POP 00.05.05.POP: {Colaborador} — Envio de Imóveis)
+    if (client.zoho_id && zohoService.isConfigured()) {
+      try {
+        const consultants = clientManager.getConsultants();
+        const assistants = clientManager.getAssistants();
+        const consultant = consultants.find(co => co.id === client.consultant_id);
+        const assistant = assistants.find(as => as.id === client.assistant_id);
+        const authorName = consultant_name || (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE';
+
+        const popNote = zohoService.formatPopNote({
+          authorName,
+          action: 'Envio de Imóveis',
+          client,
+          consultantName: consultant ? consultant.name : '',
+          assistantName: assistant ? assistant.name : '',
+          listings: [listing],
+          channel: 'Idealista Farm / WhatsApp'
+        });
+
+        await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
+      } catch (zErr) {
+        console.warn('Aviso sincronização Zoho Note em record-sent:', zErr.message);
+      }
+    }
+
+    // Todoist Task sync (Regra 1: Feedback do Consultor em #Geral)
+    if (todoistService.isConfigured()) {
+      try {
+        const consultants = clientManager.getConsultants();
+        const consultant = consultants.find(co => co.id === client.consultant_id);
+        todoistService.createSentFeedbackTask(client, [listing], consultant).catch(tErr => {
+          console.warn('Aviso sincronização Todoist record-sent:', tErr.message);
+        });
+      } catch (tErr) {}
+    }
+
     res.json({ success: true, driveResult });
   } catch (err) {
     console.error('Erro ao registar na Drive:', err.message);
@@ -657,6 +960,7 @@ app.post('/api/listings/batch-status', async (req, res) => {
   listing_ids.forEach(id => clientManager.updateListingStatus(id, client_id, status));
 
   let driveSync = null;
+  let zohoNoteSync = null;
   if (status === 'enviado') {
     try {
       const client = clientManager.getClient(client_id);
@@ -664,13 +968,47 @@ app.post('/api/listings/batch-status', async (req, res) => {
       const targetListings = allListings.filter(l => listing_ids.includes(l.id));
       if (client && targetListings.length > 0) {
         driveSync = await googleDriveService.recordSentProperties(client, targetListings);
+
+        // Zoho CRM Note sync (POP 00.05.05.POP: {Colaborador} — Envio de Imóveis)
+        if (client.zoho_id && zohoService.isConfigured()) {
+          try {
+            const consultants = clientManager.getConsultants();
+            const assistants = clientManager.getAssistants();
+            const consultant = consultants.find(co => co.id === client.consultant_id);
+            const assistant = assistants.find(as => as.id === client.assistant_id);
+            const authorName = (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE';
+
+            const popNote = zohoService.formatPopNote({
+              authorName,
+              action: 'Envio de Imóveis',
+              client,
+              consultantName: consultant ? consultant.name : '',
+              assistantName: assistant ? assistant.name : '',
+              listings: targetListings,
+              channel: 'Idealista Farm / WhatsApp'
+            });
+
+            zohoNoteSync = await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
+          } catch (zErr) {
+            console.warn('Aviso sincronização Zoho Note em lote:', zErr.message);
+          }
+        }
+
+        // Todoist Task sync (Regra 1: Feedback do Consultor em #Geral)
+        if (todoistService.isConfigured()) {
+          const consultants = clientManager.getConsultants();
+          const consultant = consultants.find(co => co.id === client.consultant_id);
+          todoistService.createSentFeedbackTask(client, targetListings, consultant).catch(tErr => {
+            console.warn('Aviso sincronização Todoist em lote:', tErr.message);
+          });
+        }
       }
     } catch (dErr) {
       console.warn('Aviso sincronização Drive ao mudar estado em lote:', dErr.message);
     }
   }
 
-  res.json({ success: true, count: listing_ids.length, driveSync });
+  res.json({ success: true, count: listing_ids.length, driveSync, zohoNoteSync });
 });
 
 // ── CSV EXPORT ────────────────────────────────────────────────────────────────
@@ -714,7 +1052,7 @@ app.post('/api/visits', async (req, res) => {
 
   const saved = clientManager.saveVisit(visitData);
 
-  // Sincronizar com Google Calendar via Webhook se ativado
+  // 1. Sincronizar com Google Calendar via Webhook se ativado
   let googleSync = null;
   try {
     googleSync = await googleDriveService.scheduleVisit(saved);
@@ -722,7 +1060,34 @@ app.post('/api/visits', async (req, res) => {
     console.warn('Aviso sincronização Google Calendar:', e.message);
   }
 
-  res.json({ success: true, visit: saved, googleSync });
+  // 2. Registar Nota automaticamente no Zoho CRM se o cliente tiver zoho_id
+  let zohoNoteSync = null;
+  if (saved.client_id) {
+    const client = clientManager.getClient(saved.client_id);
+    if (client && client.zoho_id && zohoService.isConfigured()) {
+      try {
+        const visitTimeStr = saved.time ? ` às ${saved.time}` : '';
+        const visitDateFormatted = `${saved.date}${visitTimeStr}`;
+        const noteTitle = `📅 Visita Agendada: ${saved.listing_title || saved.property_title || 'Imóvel para Visita'}`;
+        const noteContent = `Visita marcada no Marcador de Visitas SURE:\n\n` +
+          `• Imóvel: ${saved.listing_title || saved.property_title || 'N/A'}\n` +
+          `• Data e Hora: ${visitDateFormatted} (${saved.duration || '60'} min)\n` +
+          `• Localização / Morada: ${saved.location || client.location || 'N/A'}\n` +
+          `• Preço: ${saved.price || 'N/A'}\n` +
+          `• Consultor: ${saved.consultant_name || 'N/A'}\n` +
+          `• Contacto / Responsável: ${saved.contact_person || 'N/A'}\n` +
+          `• Link do Imóvel: ${saved.link || saved.listing_url || 'N/A'}\n` +
+          `• Notas / Observações: ${saved.notes || 'Sem observações adicionais'}\n` +
+          `• Registado em: ${new Date().toLocaleString('pt-PT')}`;
+
+        zohoNoteSync = await zohoService.addDealNote(client.zoho_id, noteTitle, noteContent);
+      } catch (zErr) {
+        console.warn('Aviso sincronização Visita no Zoho CRM:', zErr.message);
+      }
+    }
+  }
+
+  res.json({ success: true, visit: saved, googleSync, zohoNoteSync });
 });
 
 app.delete('/api/visits/:id', (req, res) => {
@@ -730,11 +1095,32 @@ app.delete('/api/visits/:id', (req, res) => {
   res.json({ success });
 });
 
-app.post('/api/visits/:id/status', (req, res) => {
+app.post('/api/visits/:id/status', async (req, res) => {
   const { status } = req.body;
   if (!status) return res.status(400).json({ error: 'Status obrigatório' });
   const updated = clientManager.updateVisitStatus(req.params.id, status);
   if (!updated) return res.status(404).json({ error: 'Visita não encontrada' });
+
+  // Registar atualização de estado da visita no Zoho CRM se relevante (realizada / cancelada)
+  if (updated && updated.client_id && (status === 'realizada' || status === 'cancelada')) {
+    const client = clientManager.getClient(updated.client_id);
+    if (client && client.zoho_id && zohoService.isConfigured()) {
+      try {
+        const isDone = status === 'realizada';
+        const noteTitle = isDone ? `✅ Visita Realizada: ${updated.listing_title || 'Imóvel'}` : `❌ Visita Cancelada: ${updated.listing_title || 'Imóvel'}`;
+        const noteContent = `Atualização de Estado de Visita:\n\n` +
+          `• Estado: ${status.toUpperCase()}\n` +
+          `• Imóvel: ${updated.listing_title || 'N/A'}\n` +
+          `• Data: ${updated.date} ${updated.time || ''}\n` +
+          `• Consultor: ${updated.consultant_name || 'N/A'}\n` +
+          `• Notas: ${updated.notes || 'N/A'}\n` +
+          `• Atualizado em: ${new Date().toLocaleString('pt-PT')}`;
+
+        zohoService.addDealNote(client.zoho_id, noteTitle, noteContent).catch(() => {});
+      } catch (e) {}
+    }
+  }
+
   res.json({ success: true, visit: updated });
 });
 
@@ -789,12 +1175,39 @@ app.post('/api/sync-batch', (req, res) => {
   }
 });
 
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
   app.listen(PORT, () => {
     console.log(`\n╔══════════════════════════════════════════════╗`);
     console.log(`║   🏡 SURE. IDEALISTA FARM - v1.2.0           ║`);
     console.log(`║   http://localhost:${PORT}                      ║`);
     console.log(`╚══════════════════════════════════════════════╝\n`);
+
+    // Sincronização periódica automática no Todoist para clientes em atraso (Regra 2)
+    setTimeout(async () => {
+      if (todoistService.isConfigured() && todoistService.config.enabled) {
+        try {
+          const clients = clientManager.getClients();
+          const consultants = clientManager.getConsultants();
+          const assistants = clientManager.getAssistants();
+          await todoistService.syncOverdueClients(clients, consultants, assistants);
+        } catch (e) {
+          console.warn('Aviso sincronização inicial Todoist:', e.message);
+        }
+      }
+    }, 5000);
+
+    setInterval(async () => {
+      if (todoistService.isConfigured() && todoistService.config.enabled) {
+        try {
+          const clients = clientManager.getClients();
+          const consultants = clientManager.getConsultants();
+          const assistants = clientManager.getAssistants();
+          await todoistService.syncOverdueClients(clients, consultants, assistants);
+        } catch (e) {
+          console.warn('Aviso sincronização periódica Todoist:', e.message);
+        }
+      }
+    }, 30 * 60 * 1000); // Executar a cada 30 min
   });
 }
 
