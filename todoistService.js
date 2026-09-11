@@ -10,6 +10,68 @@ const TODOIST_CONFIG_FILE = path.join(DATA_DIR, 'todoist_config.json');
 
 const TODOIST_API_BASE = 'https://api.todoist.com/api/v1';
 
+// Mapeamento direto de IDs de consultores/administrativos e nomes para IDs de utilizador do Todoist
+const TODOIST_COLLABORATORS = {
+  // IDs do sistema
+  'consultant-nuno': '56581171',
+  'assistant-nuno': '56581171',
+  'consultant-rui': '55695606',
+  'assistant-rui': '55695606',
+  'consultant-diogo': '60211929',
+  'assistant-diogo': '60211929',
+  'consultant-gardiana': '60546297',
+  'assistant-gardiana': '60546297',
+  'consultant-elizabete': '60629507',
+  'consultant-elisabete': '60629507',
+  'assistant-elizabete': '60629507',
+  'assistant-elisabete': '60629507',
+  'consultant-pedro': '29012083',
+  'assistant-pedro': '29012083',
+  'consultant-pedro-oliveira': '58778382',
+  'consultant-joao': '54941221',
+  'assistant-joao': '54941221',
+  'consultant-geral': '56581061',
+  'assistant-geral': '56581061',
+
+  // Nomes
+  'pedro barros': '29012083',
+  'pedro varandas de melo barros': '29012083',
+  'joao santos': '54941221',
+  'joão santos': '54941221',
+  'rui rebelo': '55695606',
+  'nuno oliveira': '56581171',
+  'nuno miguel oliveira': '56581171',
+  'pedro oliveira': '58778382',
+  'pedro miguel oliveira': '58778382',
+  'diogo sousa': '60211929',
+  'diogo': '60211929',
+  'gardiana rodrigues': '60546297',
+  'gardiana ferreira': '60546297',
+  'gardiana': '60546297',
+  'elisabete martins': '60629507',
+  'elizabete martins': '60629507',
+  'elisabete': '60629507',
+  'elizabete': '60629507',
+  'simple unique real estate': '56581061',
+  'equipa sure': '56581061',
+  'geral': '56581061',
+
+  // Emails
+  'peterx.barros@gmail.com': '29012083',
+  'santosjoaopt99@gmail.com': '54941221',
+  'ruirebelo.realestate@outlook.com': '55695606',
+  'nmfo98@gmail.com': '56581171',
+  'pedromigueloliveira@outlook.pt': '58778382',
+  'diogo.drs74@gmail.com': '60211929',
+  'gardiana.rodrigues@arys.pt': '60546297',
+  'cbfafe@gmail.com': '60629507',
+  'geral@sure-pt.com': '56581061'
+};
+
+function normalizeString(s) {
+  return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
 function syncWrite(targetFile, data) {
   try {
     fs.writeFileSync(targetFile, JSON.stringify(data, null, 2), 'utf-8');
@@ -29,6 +91,7 @@ class TodoistService {
     this.config = this.loadConfig();
     this.projectCache = null;
     this.cacheExpiry = 0;
+    this.collaboratorsCache = {};
   }
 
   loadConfig() {
@@ -71,6 +134,36 @@ class TodoistService {
       'Authorization': `Bearer ${this.config.api_token.trim()}`,
       'Content-Type': 'application/json'
     };
+  }
+
+  findAssigneeId(input) {
+    if (!input) return null;
+    if (typeof input === 'object') {
+      return this.findAssigneeId(input.id) || this.findAssigneeId(input.name) || this.findAssigneeId(input.email);
+    }
+    const raw = String(input).trim();
+    if (!raw) return null;
+
+    // 1. Direct key match
+    if (TODOIST_COLLABORATORS[raw.toLowerCase()]) {
+      return TODOIST_COLLABORATORS[raw.toLowerCase()];
+    }
+
+    // 2. Normalized match (remove accents)
+    const norm = normalizeString(raw);
+    for (const [k, uid] of Object.entries(TODOIST_COLLABORATORS)) {
+      if (normalizeString(k) === norm) return uid;
+    }
+
+    // 3. Partial substring match
+    for (const [k, uid] of Object.entries(TODOIST_COLLABORATORS)) {
+      const knorm = normalizeString(k);
+      if (knorm.length >= 4 && (norm.includes(knorm) || knorm.includes(norm))) {
+        return uid;
+      }
+    }
+
+    return null;
   }
 
   async testConnection() {
@@ -193,7 +286,8 @@ class TodoistService {
 
   /**
    * REGRA 1: Sempre que são enviados imóveis a um cliente:
-   * Cria tarefa no canal/projeto #Geral para o Consultor Responsável verificar os imóveis e pedir feedback ao cliente.
+   * Cria tarefa no canal/projeto #Geral atribuída diretamente ao Consultor Responsável
+   * para verificar os imóveis e pedir feedback ao cliente.
    */
   async createSentFeedbackTask(client, listings = [], consultant = null) {
     if (!this.isConfigured() || !this.config.enabled) {
@@ -202,31 +296,29 @@ class TodoistService {
     if (!client) return { success: false, reason: 'Cliente inválido' };
 
     const consultantName = (consultant && consultant.name) ? consultant.name : (client.consultant_name || 'Consultor');
+    const consultantId = (consultant && consultant.id) ? consultant.id : (client.consultant_id || '');
     const targetProjectName = this.config.feedback_project_name || 'Geral';
     const project = await this.findOrCreateProject(targetProjectName);
     
+    // Obter Assignee UID para atribuir a tarefa ao Consultor
+    const assigneeUid = this.findAssigneeId(consultantId) ||
+                         this.findAssigneeId(consultantName) ||
+                         this.findAssigneeId(client.consultant_id) ||
+                         this.findAssigneeId(client.consultant_name) ||
+                         this.findAssigneeId(client.assistant_id) ||
+                         this.findAssigneeId(client.assistant_name);
+
     let sectionId = null;
     if (project) {
-      // 1. Tentar primeiro colocar na secção do Administrativo Responsável (ex: 'João Santos', 'Pedro Barros', 'Nuno Oliveira')
-      if (client.assistant_name && client.assistant_name !== 'Geral / Administração') {
-        const sec = await this.findOrCreateSection(project.id, client.assistant_name);
+      // 1. Tentar secção do Consultor
+      if (consultantName && consultantName !== 'Geral / Equipa SURE') {
+        const sec = await this.findOrCreateSection(project.id, consultantName);
         if (sec) sectionId = sec.id;
-      } else if (client.assistant_id) {
-        const astMap = {
-          'assistant-joao': 'João Santos',
-          'assistant-pedro': 'Pedro Barros',
-          'assistant-nuno': 'Nuno Oliveira',
-          'assistant-rui': 'Rui Rebelo'
-        };
-        if (astMap[client.assistant_id]) {
-          const sec = await this.findOrCreateSection(project.id, astMap[client.assistant_id]);
-          if (sec) sectionId = sec.id;
-        }
       }
 
-      // 2. Fallback para a secção do Consultor
-      if (!sectionId && consultantName && consultantName !== 'Geral / Equipa SURE') {
-        const sec = await this.findOrCreateSection(project.id, consultantName);
+      // 2. Fallback para secção do Administrativo
+      if (!sectionId && client.assistant_name && client.assistant_name !== 'Geral / Administração') {
+        const sec = await this.findOrCreateSection(project.id, client.assistant_name);
         if (sec) sectionId = sec.id;
       }
     }
@@ -251,7 +343,7 @@ class TodoistService {
       taskDesc += `**Imóveis Enviados:**\n${itemsText}\n\n`;
     }
     
-    taskDesc += `_Tarefa gerada no canal #${project ? project.name : targetProjectName} após envio de opções no Idealista Farm._`;
+    taskDesc += `_Tarefa gerada no canal #${project ? project.name : targetProjectName} atribuída ao consultor após envio de opções no Idealista Farm._`;
 
     try {
       const payload = {
@@ -259,6 +351,8 @@ class TodoistService {
         description: taskDesc,
         project_id: project ? project.id : undefined,
         section_id: sectionId || undefined,
+        assignee_id: assigneeUid || undefined,
+        responsible_uid: assigneeUid || undefined,
         due_string: 'today',
         priority: 3, // P2 no Todoist
         labels: ['feedback', 'imoveis', (cleanConsultantName || '').replace(/\s+/g, '_')]
@@ -269,7 +363,7 @@ class TodoistService {
         timeout: 10000
       });
 
-      console.log(`✅ [Todoist] Tarefa criada em #${project ? project.name : targetProjectName} (${taskContent})`);
+      console.log(`✅ [Todoist] Tarefa criada em #${project ? project.name : targetProjectName} atribuída a UID ${assigneeUid} (${taskContent})`);
       return { success: true, task: res.data };
     } catch (err) {
       const errMsg = err.response && err.response.data ? JSON.stringify(err.response.data) : err.message;
@@ -280,8 +374,8 @@ class TodoistService {
 
   /**
    * REGRA 2: Sempre que algum cliente fica em atraso no envio de imóveis:
-   * Cria tarefa no canal/projeto #Administrativo para o Administrativo Responsável
-   * procurar e enviar opções, com prazo para o próprio dia (today).
+   * Cria tarefa no canal/projeto #Administrativo atribuída ao Administrativo Responsável
+   * para procurar e enviar opções, com prazo para o próprio dia (today).
    */
   async syncOverdueClients(clients = [], consultants = [], assistants = []) {
     if (!this.isConfigured() || !this.config.enabled) {
@@ -309,6 +403,14 @@ class TodoistService {
       const consultant = consultants.find(co => co.id === client.consultant_id) || { name: 'Consultor Geral' };
       const assistant = assistants.find(as => as.id === client.assistant_id) || { name: 'Administrativo Geral' };
       const daysOverdue = client.days_overdue || client.days_since_sent || 0;
+
+      // Assignee UID do Administrativo (ou Consultor se não houver administrativo)
+      const assigneeUid = this.findAssigneeId(assistant.id) ||
+                           this.findAssigneeId(assistant.name) ||
+                           this.findAssigneeId(client.assistant_id) ||
+                           this.findAssigneeId(client.assistant_name) ||
+                           this.findAssigneeId(consultant.id) ||
+                           this.findAssigneeId(consultant.name);
 
       // Nome da tarefa
       const taskTitle = `🔍 Procurar e enviar opções: ${client.name} (${assistant.name})`;
@@ -344,6 +446,8 @@ class TodoistService {
           description: taskDesc,
           project_id: project.id,
           section_id: sectionId || undefined,
+          assignee_id: assigneeUid || undefined,
+          responsible_uid: assigneeUid || undefined,
           due_string: 'today', // Prazo para o próprio dia!
           priority: client.priority === 'SU' ? 4 : 3, // P1 se Super Urgente, P2 se Urgente
           labels: ['atraso', 'administrativo', (assistant.name || '').replace(/\s+/g, '_')]
@@ -356,8 +460,8 @@ class TodoistService {
 
         taskHistory[historyKey] = now;
         createdCount++;
-        results.push({ client: client.name, taskId: res.data.id, assistant: assistant.name });
-        console.log(`✅ [Todoist] Tarefa de atraso criada em #${project.name} para o Administrativo ${assistant.name} (Cliente: ${client.name})`);
+        results.push({ client: client.name, taskId: res.data.id, assistant: assistant.name, assignee: assigneeUid });
+        console.log(`✅ [Todoist] Tarefa de atraso criada em #${project.name} para o Administrativo ${assistant.name} (UID: ${assigneeUid}, Cliente: ${client.name})`);
       } catch (err) {
         console.error(`Erro ao criar tarefa Todoist de atraso para ${client.name}:`, err.message);
       }
