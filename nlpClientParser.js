@@ -1,4 +1,5 @@
 const cm = require('./clientManager');
+const { extractAndNormalizeAllLocations } = require('./geoResolver');
 
 function parseClientText(rawText) {
   if (!rawText || typeof rawText !== 'string') return null;
@@ -112,32 +113,10 @@ function parseClientText(rawText) {
     property_type = 'apartamentos';
   }
 
-  // 5. LOCALIZAÇÃO
-  const locations = [
-    { match: /famalic[aã]o|v\.?\s*n\.?\s*famalic[aã]o/i, loc: 'Vila Nova de Famalicão' },
-    { match: /guimar[aã]es/i, loc: 'Guimarães' },
-    { match: /barcelos/i, loc: 'Barcelos' },
-    { match: /amares/i, loc: 'Amares' },
-    { match: /vila\s*verde/i, loc: 'Vila Verde' },
-    { match: /esposende/i, loc: 'Esposende' },
-    { match: /p[oó]voa\s*de\s*varzim|p[oó]voa/i, loc: 'Póvoa de Varzim' },
-    { match: /vila\s*do\s*conde/i, loc: 'Vila do Conde' },
-    { match: /viana\s*do\s*castelo|viana/i, loc: 'Viana do Castelo' },
-    { match: /ponte\s*de\s*lima/i, loc: 'Ponte de Lima' },
-    { match: /fafe/i, loc: 'Fafe' },
-    { match: /porto/i, loc: 'Porto' },
-    { match: /matosinhos|le[cç]a/i, loc: 'Matosinhos' },
-    { match: /maia/i, loc: 'Maia' },
-    { match: /braga/i, loc: 'Braga' }
-  ];
-
-  let location = 'Braga';
-  for (const l of locations) {
-    if (l.match.test(lower)) {
-      location = l.loc;
-      break;
-    }
-  }
+  // 5. LOCALIZAÇÃO (Múltiplas localizações, freguesias e correção de erros)
+  const geoInfo = extractAndNormalizeAllLocations(text);
+  const location = geoInfo.formatted;
+  const locationsList = geoInfo.locations;
 
   // 6. EXTRAÇÃO DE PREÇO
   let max_price = null;
@@ -230,6 +209,7 @@ function parseClientText(rawText) {
     operation,
     property_type,
     location,
+    locations: locationsList,
     max_price,
     min_price,
     typology: typologies,

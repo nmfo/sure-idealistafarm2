@@ -68,6 +68,26 @@ const TODOIST_COLLABORATORS = {
   'geral@sure-pt.com': '56581061'
 };
 
+// Secções oficiais (Blocos) do projeto #Administrativo - E.A.I.
+const TODOIST_ADMIN_SECTIONS = {
+  'assistant-nuno': '6hVQXQx33rmcRwW3',
+  'nuno oliveira': '6hVQXQx33rmcRwW3',
+  'nuno': '6hVQXQx33rmcRwW3',
+  '56581171': '6hVQXQx33rmcRwW3',
+
+  'assistant-pedro': '6hVQ6mQh8QghVH93',
+  'pedro barros': '6hVQ6mQh8QghVH93',
+  'pedro': '6hVQ6mQh8QghVH93',
+  '29012083': '6hVQ6mQh8QghVH93',
+
+  'assistant-joao': '6hVQ6mff8vPMMGVV',
+  'joao santos': '6hVQ6mff8vPMMGVV',
+  'joão santos': '6hVQ6mff8vPMMGVV',
+  'joao': '6hVQ6mff8vPMMGVV',
+  'joão': '6hVQ6mff8vPMMGVV',
+  '54941221': '6hVQ6mff8vPMMGVV'
+};
+
 function normalizeString(s) {
   return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
@@ -284,6 +304,58 @@ class TodoistService {
     }
   }
 
+  async completeTask(taskId) {
+    if (!this.isConfigured() || !taskId) return false;
+    try {
+      await axios.post(`${TODOIST_API_BASE}/tasks/${taskId}/close`, {}, {
+        headers: this.getHeaders(),
+        timeout: 10000
+      });
+      console.log(`✅ [Todoist] Tarefa ${taskId} marcada como concluída.`);
+      return true;
+    } catch (err) {
+      console.error(`Erro ao concluir tarefa ${taskId} no Todoist:`, err.message);
+      return false;
+    }
+  }
+
+  /**
+   * Conclui automaticamente qualquer tarefa pendente de "Procurar e enviar opções"
+   * no projeto #Administrativo para o cliente especificado quando o administrativo envia casas.
+   */
+  async completeAdminTaskForClient(client) {
+    if (!this.isConfigured() || !this.config.enabled || !client) return { closed: 0 };
+    try {
+      const adminProjectName = this.config.admin_project_name || 'Administrativo - E.A.I.';
+      const project = await this.findOrCreateProject(adminProjectName);
+      if (!project) return { closed: 0 };
+
+      const tasks = await this.getActiveTasks(project.id);
+      const cleanClientName = String(client.name || '').toLowerCase().trim();
+      if (!cleanClientName) return { closed: 0 };
+
+      // Filtrar tarefas abertas que mencionam o cliente
+      const matchingTasks = tasks.filter(t => {
+        const content = String(t.content || '').toLowerCase();
+        return content.includes(cleanClientName) || (client.id && content.includes(String(client.id).toLowerCase()));
+      });
+
+      let closedCount = 0;
+      for (const t of matchingTasks) {
+        const ok = await this.completeTask(t.id);
+        if (ok) closedCount++;
+      }
+
+      if (closedCount > 0) {
+        console.log(`🎉 [Todoist] Concluída(s) ${closedCount} tarefa(s) administrativa(s) para o cliente "${client.name}"`);
+      }
+      return { closed: closedCount };
+    } catch (err) {
+      console.error(`Erro ao fechar tarefas do cliente ${client.name} no Todoist:`, err.message);
+      return { closed: 0, error: err.message };
+    }
+  }
+
   /**
    * REGRA 1: Sempre que são enviados imóveis a um cliente:
    * Cria tarefa no canal/projeto #Geral atribuída diretamente ao Consultor Responsável
@@ -377,6 +449,67 @@ class TodoistService {
    * Cria tarefa no canal/projeto #Administrativo atribuída ao Administrativo Responsável
    * para procurar e enviar opções, com prazo para o próprio dia (today).
    */
+  resolveResponsibleAssistant(client = {}, consultant = {}, assistants = []) {
+    let assistantId = client.assistant_id;
+    let assistantName = client.assistant_name;
+    const consultantId = (consultant && consultant.id) ? consultant.id : (client.consultant_id || '');
+
+    if (!assistantId || assistantId === 'assistant-geral') {
+      if (consultantId === 'consultant-rui') {
+        assistantId = 'assistant-joao';
+      } else if (['consultant-nuno', 'consultant-pedro', 'consultant-pedro-oliveira'].includes(consultantId)) {
+        assistantId = 'assistant-pedro';
+      } else if (['consultant-diogo', 'consultant-gardiana', 'consultant-elizabete', 'consultant-elisabete'].includes(consultantId)) {
+        assistantId = 'assistant-nuno';
+      } else {
+        assistantId = 'assistant-nuno';
+      }
+    }
+
+    const matchedAssistant = Array.isArray(assistants) ? assistants.find(a => a.id === assistantId) : null;
+    if (matchedAssistant) {
+      assistantName = matchedAssistant.name;
+    } else {
+      if (assistantId === 'assistant-joao') assistantName = 'João Santos';
+      else if (assistantId === 'assistant-pedro') assistantName = 'Pedro Barros';
+      else assistantName = 'Nuno Oliveira';
+    }
+
+    let uid = this.findAssigneeId(assistantId) || this.findAssigneeId(assistantName);
+    if (!uid || uid === '56581061') {
+      if (assistantId === 'assistant-joao') uid = '54941221';
+      else if (assistantId === 'assistant-pedro') uid = '29012083';
+      else uid = '56581171'; // Nuno Oliveira
+    }
+
+    return {
+      assistantId,
+      assistantName,
+      assigneeUid: String(uid)
+    };
+  }
+
+  async getAdminSectionId(assistantIdOrName, projectId = '6hVMmvMwfJ6FMm5V') {
+    if (!assistantIdOrName) return null;
+    const raw = String(assistantIdOrName).trim();
+    const norm = normalizeString(raw);
+    
+    if (TODOIST_ADMIN_SECTIONS[norm]) return TODOIST_ADMIN_SECTIONS[norm];
+    for (const [k, sId] of Object.entries(TODOIST_ADMIN_SECTIONS)) {
+      const knorm = normalizeString(k);
+      if (knorm === norm || (knorm.length >= 4 && (norm.includes(knorm) || knorm.includes(norm)))) {
+        return sId;
+      }
+    }
+    const sec = await this.findOrCreateSection(projectId, assistantIdOrName);
+    return sec ? sec.id : null;
+  }
+
+  /**
+   * REGRA 2: Sempre que algum cliente fica em atraso no envio de imóveis:
+   * Cria tarefa no canal/projeto #Administrativo atribuída ao Administrativo Responsável
+   * para procurar e enviar opções, com prazo para o próprio dia (today).
+   */
   async syncOverdueClients(clients = [], consultants = [], assistants = []) {
     if (!this.isConfigured() || !this.config.enabled) {
       return { success: false, count: 0, reason: 'Todoist não configurado ou inativo' };
@@ -401,19 +534,13 @@ class TodoistService {
 
     for (const client of overdueClients) {
       const consultant = consultants.find(co => co.id === client.consultant_id) || { name: 'Consultor Geral' };
-      const assistant = assistants.find(as => as.id === client.assistant_id) || { name: 'Administrativo Geral' };
+      const resolved = this.resolveResponsibleAssistant(client, consultant, assistants);
+      const assistantName = resolved.assistantName;
+      const assigneeUid = resolved.assigneeUid;
       const daysOverdue = client.days_overdue || client.days_since_sent || 0;
 
-      // Assignee UID do Administrativo (ou Consultor se não houver administrativo)
-      const assigneeUid = this.findAssigneeId(assistant.id) ||
-                           this.findAssigneeId(assistant.name) ||
-                           this.findAssigneeId(client.assistant_id) ||
-                           this.findAssigneeId(client.assistant_name) ||
-                           this.findAssigneeId(consultant.id) ||
-                           this.findAssigneeId(consultant.name);
-
-      // Nome da tarefa
-      const taskTitle = `🔍 Procurar e enviar opções: ${client.name} (${assistant.name})`;
+      // Nome da tarefa com o nome do administrativo responsável
+      const taskTitle = `🔍 Procurar e enviar opções: ${client.name} (${assistantName})`;
 
       // Verificar se já existe uma tarefa aberta para este cliente
       const alreadyOpen = Array.from(existingTitles).some(t => t.includes(client.name.toLowerCase().trim()));
@@ -424,15 +551,11 @@ class TodoistService {
         continue;
       }
 
-      // Criar secção para o Administrativo se pretendido
-      let sectionId = null;
-      if (assistant && assistant.name && assistant.name !== 'Geral / Administração') {
-        const section = await this.findOrCreateSection(project.id, assistant.name);
-        if (section) sectionId = section.id;
-      }
+      // Secção correta do Administrativo Responsável (Bloco no Todoist)
+      const sectionId = await this.getAdminSectionId(resolved.assistantId || assistantName, project.id);
 
       let taskDesc = `🚨 **CLIENTE EM ATRASO (${daysOverdue} dias sem envio de opções)**\n\n`;
-      taskDesc += `• **Administrativo Responsável:** ${assistant.name}\n`;
+      taskDesc += `• **Administrativo Responsável:** ${assistantName}\n`;
       taskDesc += `• **Consultor:** ${consultant.name}\n`;
       taskDesc += `• **Prioridade do Cliente:** ${client.priority === 'SU' ? 'Super Urgente (2 dias)' : client.priority === 'U' ? 'Urgente (5 dias)' : 'Standard (10 dias)'}\n`;
       taskDesc += `• **Critérios de Procura:** ${client.typology || 'Qualquer'} em ${client.location || 'Localização Geral'}\n`;
@@ -446,11 +569,11 @@ class TodoistService {
           description: taskDesc,
           project_id: project.id,
           section_id: sectionId || undefined,
-          assignee_id: assigneeUid || undefined,
-          responsible_uid: assigneeUid || undefined,
+          assignee_id: String(assigneeUid),
+          responsible_uid: String(assigneeUid),
           due_string: 'today', // Prazo para o próprio dia!
           priority: client.priority === 'SU' ? 4 : 3, // P1 se Super Urgente, P2 se Urgente
-          labels: ['atraso', 'administrativo', (assistant.name || '').replace(/\s+/g, '_')]
+          labels: ['atraso', 'administrativo', (assistantName || '').replace(/\s+/g, '_')]
         };
 
         const res = await axios.post(`${TODOIST_API_BASE}/tasks`, payload, {
@@ -460,8 +583,8 @@ class TodoistService {
 
         taskHistory[historyKey] = now;
         createdCount++;
-        results.push({ client: client.name, taskId: res.data.id, assistant: assistant.name, assignee: assigneeUid });
-        console.log(`✅ [Todoist] Tarefa de atraso criada em #${project.name} para o Administrativo ${assistant.name} (UID: ${assigneeUid}, Cliente: ${client.name})`);
+        results.push({ client: client.name, taskId: res.data.id, assistant: assistantName, assignee: assigneeUid });
+        console.log(`✅ [Todoist] Tarefa de atraso criada em #${project.name} para o Administrativo ${assistantName} (UID: ${assigneeUid}, Cliente: ${client.name})`);
       } catch (err) {
         console.error(`Erro ao criar tarefa Todoist de atraso para ${client.name}:`, err.message);
       }

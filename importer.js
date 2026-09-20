@@ -1,5 +1,6 @@
 const XLSX = require('xlsx');
 const clientManager = require('./clientManager');
+const { extractAndNormalizeAllLocations } = require('./geoResolver');
 
 function normalizeStr(str) {
   if (!str) return '';
@@ -40,8 +41,19 @@ function parseZohoExcel(bufferOrPath) {
     }
     const consultantId = consultant ? consultant.id : 'consultant-geral';
 
-    // 3. Find Location
-    const location = row['Localização'] || row['Cidade'] || row['Concelho'] || row['Freguesia'] || row['Zona de Procura'] || row['Zona'] || row['City'] || row['Mailing City'] || 'Braga';
+    // 3. Find All Location Columns & Free Text Notes
+    const locationCandidates = [
+      row['Localização'], row['Localizações'],
+      row['Cidade'], row['Cidades'], row['City'], row['Mailing City'],
+      row['Concelho'], row['Concelhos'],
+      row['Distrito'], row['Distritos'], row['State'], row['Mailing State'],
+      row['Freguesia'], row['Freguesias'],
+      row['Zona de Procura'], row['Zonas de Procura'], row['Zona'], row['Zonas'],
+      row['Outras Localizações'], row['Outras Zonas']
+    ].filter(Boolean);
+
+    const notesRaw = row['Notas'] || row['Descrição'] || row['Description'] || row['Observações'] || '';
+    const geoInfo = extractAndNormalizeAllLocations(locationCandidates, notesRaw);
 
     // 4. Operation (comprar / arrendar)
     let op = (row['Operação'] || row['Tipo de Negócio'] || row['Objetivo'] || row['Operation'] || 'comprar').toLowerCase();
@@ -87,7 +99,6 @@ function parseZohoExcel(bufferOrPath) {
     // 9. Notes & Phone & Email
     const phone = row['Telemóvel'] || row['Telefone'] || row['Phone'] || row['Mobile'] || '';
     const email = row['Email'] || row['E-mail'] || '';
-    const notesRaw = row['Notas'] || row['Descrição'] || row['Description'] || row['Observações'] || '';
     const notes = [
       phone ? `📞 ${phone}` : '',
       email ? `✉ ${email}` : '',
@@ -103,7 +114,8 @@ function parseZohoExcel(bufferOrPath) {
       priority: priority,
       operation: op,
       property_type: propType,
-      location: location.trim(),
+      location: geoInfo.formatted,
+      locations: geoInfo.locations,
       min_price: minPrice,
       max_price: maxPrice,
       typology: typos,

@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const querystring = require('querystring');
-const os = require('os');
+const { extractAndNormalizeAllLocations } = require('./geoResolver');
 
 const IS_VERCEL = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DATA_DIR = IS_VERCEL ? path.join(os.tmpdir(), 'sure_data') : path.join(__dirname, 'data');
@@ -100,9 +100,9 @@ class ZohoService {
     }
 
     return {
-      client_id: process.env.ZOHO_CLIENT_ID || cfg.client_id || '1000.IY3MVOLTEOD7YFFNQ2CN68D43L23AC',
-      client_secret: process.env.ZOHO_CLIENT_SECRET || cfg.client_secret || '96a6f775d7831cc26d1d46a697474608329fb13871',
-      refresh_token: process.env.ZOHO_REFRESH_TOKEN || cfg.refresh_token || '1000.e7645dea78429ad94f9238ddab299d20.e98aa91dd75b4b22e40689ec629c578f',
+      client_id: process.env.ZOHO_CLIENT_ID || cfg.client_id || '',
+      client_secret: process.env.ZOHO_CLIENT_SECRET || cfg.client_secret || '',
+      refresh_token: process.env.ZOHO_REFRESH_TOKEN || cfg.refresh_token || '',
       access_token: cfg.access_token || '',
       expires_at: cfg.expires_at || 0,
       api_domain: process.env.ZOHO_API_DOMAIN || cfg.api_domain || 'https://www.zohoapis.eu',
@@ -255,12 +255,12 @@ class ZohoService {
   }
 
   getAssistantIdForConsultant(consultantId) {
-    if (consultantId === 'consultant-rui') return 'assistant-joao'; // João Santos gere os do Rui
-    if (consultantId === 'consultant-nuno') return 'assistant-pedro'; // Pedro Barros gere os do Nuno
-    if (['consultant-diogo', 'consultant-gardiana', 'consultant-elizabete'].includes(consultantId)) {
+    if (consultantId === 'consultant-rui' || consultantId === 'consultant-joao') return 'assistant-joao'; // João Santos gere os do Rui
+    if (consultantId === 'consultant-nuno' || consultantId === 'consultant-pedro' || consultantId === 'consultant-pedro-oliveira') return 'assistant-pedro'; // Pedro Barros gere os do Nuno
+    if (['consultant-diogo', 'consultant-gardiana', 'consultant-elizabete', 'consultant-elisabete'].includes(consultantId)) {
       return 'assistant-nuno'; // Nuno Oliveira gere os de Diogo, Gardiana e Elisabete
     }
-    return 'assistant-geral';
+    return 'assistant-nuno';
   }
 
   mapDealToClient(deal, existingClient = null, consultants = []) {
@@ -286,29 +286,21 @@ class ZohoService {
     ].filter(Boolean).join(' ');
     const fullTextLow = fullTextBuffer.toLowerCase();
 
-    // 1. Location / Freguesias
-    let location = String(deal.Zona_Freguesias || deal.Distrito || deal.Cidade || '').trim();
-    if (!location && fullTextLow) {
-      // Deteção inteligente de cidades e distritos frequentes
-      const knownLocations = [
-        'Guimarães', 'Braga', 'Porto', 'Vila Nova de Gaia', 'Gaia', 'Matosinhos', 'Maia',
-        'Vila Nova de Famalicão', 'Famalicão', 'Barcelos', 'Vila do Conde', 'Póvoa de Varzim',
-        'Viana do Castelo', 'Coimbra', 'Aveiro', 'Lisboa', 'Cascais', 'Oeiras', 'Sintra',
-        'Santo Tirso', 'Trofa', 'Esposende', 'Ponte de Lima', 'Vizela', 'Fafe', 'Amarante',
-        'Penafiel', 'Felgueiras', 'Leiria', 'Viseu', 'Faro', 'Portimão', 'Setúbal'
-      ];
-      const matchedLocs = [];
-      for (const loc of knownLocations) {
-        const regex = new RegExp(`\\b${loc.toLowerCase()}\\b`, 'i');
-        if (regex.test(fullTextLow)) {
-          matchedLocs.push(loc);
-        }
-      }
-      if (matchedLocs.length > 0) {
-        location = matchedLocs.slice(0, 2).join(', ');
-      }
-    }
-    if (!location) location = 'Braga';
+    // 1. All Location Fields & Free Text Buffer
+    const locationInputs = [
+      deal.Zona_Freguesias,
+      deal.Distrito,
+      deal.Cidade,
+      deal.Concelho,
+      deal.Freguesia,
+      deal.Localidade,
+      deal.Mailing_City,
+      deal.City,
+      deal.State
+    ].filter(Boolean);
+    const geoInfo = extractAndNormalizeAllLocations(locationInputs, fullTextBuffer);
+    const location = geoInfo.formatted;
+    const locationsList = geoInfo.locations;
 
     // 2. Operation
     const rawTypeClient = Array.isArray(deal.Tipo_de_Cliente1) 
@@ -425,6 +417,7 @@ class ZohoService {
       operation: operation,
       property_type: propType,
       location: location,
+      locations: locationsList,
       min_price: null,
       max_price: maxPrice,
       typology: typos,
@@ -535,7 +528,6 @@ class ZohoService {
       updated_count: updatedCount,
       skipped_count: skippedCount,
       total_clients: mergedClients.length,
-      clients: mergedClients,
       synced_at: new Date().toISOString()
     };
   }

@@ -1,18 +1,6 @@
-let chromium = null;
-function getChromium() {
-  if (!chromium) {
-    try {
-      const pExtra = require('playwright-extra');
-      const stealth = require('puppeteer-extra-plugin-stealth')();
-      chromium = pExtra.chromium;
-      chromium.use(stealth);
-    } catch (err) {
-      console.warn('⚠️ Playwright/Chromium indisponível neste ambiente:', err.message);
-      return null;
-    }
-  }
-  return chromium;
-}
+const { chromium } = require('playwright-extra');
+const stealth = require('puppeteer-extra-plugin-stealth')();
+chromium.use(stealth);
 
 const path = require('path');
 const fs = require('fs');
@@ -21,8 +9,8 @@ const { buildLocationUrl, parseListingsHtml } = require('./scraper');
 
 const SESSION_DIR  = path.join(__dirname, 'data', 'bot_persistent_profile');
 const COOKIES_FILE = path.join(__dirname, 'data', 'bot_cookies.json');
-const MAX_RESULTS  = 80;
-const MAX_PAGES    = 4;
+const MAX_RESULTS  = 150;
+const MAX_PAGES    = 6;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -114,11 +102,6 @@ async function runAutoSearchBot(clientId) {
   const client = clientManager.getClient(clientId);
   if (!client) throw new Error('Cliente não encontrado');
 
-  const chr = getChromium();
-  if (!chr) {
-    throw new Error('A automação direta de browser requer a execução do servidor local com o comando "npm start" ou "run.bat".');
-  }
-
   const targetUrl = buildLocationUrl(client);
 
   console.log(`\n${'═'.repeat(64)}`);
@@ -134,7 +117,7 @@ async function runAutoSearchBot(clientId) {
   try {
     setStatus('A iniciar navegador seguro...');
 
-    browser = await chr.launch({
+    browser = await chromium.launch({
       channel: 'chrome',
       headless: false,
       args: [
@@ -251,14 +234,11 @@ async function fetchDirectListingWithBrowser(rawUrls, clientLocation = '') {
   const urls = Array.isArray(rawUrls) ? rawUrls : [rawUrls];
   if (!urls.length) return [];
 
-  const chr = getChromium();
-  if (!chr) return [];
-
   let context = null;
   const results = [];
 
   try {
-    context = await chr.launchPersistentContext(SESSION_DIR, {
+    context = await chromium.launchPersistentContext(SESSION_DIR, {
       headless: true,
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',

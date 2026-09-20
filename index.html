@@ -12,54 +12,6 @@
   <link rel="stylesheet" href="/style.css?v=3.1">
 </head>
 <body>
-
-<!-- ── AUTH / LOGIN MODAL OVERLAY ─────────────────────────────────── -->
-<div id="login-overlay" class="login-overlay">
-  <div class="login-card">
-    <div class="login-brand">
-      <div class="brand-logo-box" style="width:54px;height:54px;background:#C75233;display:flex;align-items:center;justify-content:center;border-radius:14px;margin:0 auto 12px auto;box-shadow:0 8px 20px rgba(199,82,51,0.25);">
-        <svg viewBox="0 0 60 72" style="width:30px;height:36px;" xmlns="http://www.w3.org/2000/svg">
-          <path d="M30 4 L52 14 L52 38 C52 52 40 64 30 68 C20 64 8 52 8 38 L8 14 Z" fill="rgba(255,255,255,.2)"/>
-          <text x="30" y="50" text-anchor="middle" font-family="Outfit,sans-serif" font-weight="900" font-size="44" fill="white">S</text>
-        </svg>
-      </div>
-      <h2>SURE<span>.</span> Real Estate</h2>
-      <p>Portal de Procura de Imóveis & Gestão de Clientes</p>
-    </div>
-
-    <form id="form-login" class="login-form">
-      <div id="login-error-msg" class="login-error hidden"></div>
-
-      <div class="form-group" style="margin-bottom:12px;">
-        <label for="login-user-select" style="font-size:0.82rem;font-weight:600;color:#555;">Selecione o seu Utilizador</label>
-        <select id="login-user-select" class="login-input" style="width:100%;margin-bottom:8px;">
-          <option value="">-- Escolha da Lista Rápida --</option>
-        </select>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <input type="text" id="login-username" class="login-input" placeholder="Ou digite o nome de utilizador (ex: geral, maria)" required autocomplete="username">
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-bottom:18px;">
-        <label for="login-password" style="font-size:0.82rem;font-weight:600;color:#555;">Palavra-passe *</label>
-        <div class="password-input-wrapper">
-          <input type="password" id="login-password" class="login-input" placeholder="Introduza a sua password" required autocomplete="current-password">
-          <button type="button" id="btn-toggle-login-pass" class="btn-toggle-pass" title="Ver/Ocultar palavra-passe">
-            <i class="fa-solid fa-eye"></i>
-          </button>
-        </div>
-      </div>
-
-      <button type="submit" id="btn-submit-login" class="btn btn-primary btn-login-submit" style="width:100%;padding:12px;font-size:0.95rem;justify-content:center;">
-        <i class="fa-solid fa-arrow-right-to-bracket"></i> Entrar na Aplicação
-      </button>
-    </form>
-    <div class="login-footer" style="text-align:center;margin-top:1.2rem;font-size:0.78rem;color:#888;">
-      <span><i class="fa-solid fa-shield-halved" style="color:var(--terracota);"></i> Contas e acessos sincronizados com o Google Sheets</span>
-    </div>
-  </div>
-</div>
-
 <div class="app-layout">
 
   <!-- ── SIDEBAR ──────────────────────────────────────────────────── -->
@@ -79,33 +31,13 @@
       </div>
     </div>
 
-    <!-- Active User Card -->
-    <div class="sidebar-user-card" id="sidebar-user-card">
-      <div class="user-avatar-badge" id="user-avatar-badge" style="background:#C75233;">G</div>
-      <div class="user-meta">
-        <div class="user-name" id="user-display-name">Geral / Admin</div>
-        <div class="user-role" id="user-display-role">Administrador</div>
-      </div>
-      <div style="display:flex;gap:4px;align-items:center;">
-        <button id="btn-open-change-password" class="btn-icon-sm" title="Alterar a minha palavra-passe" style="font-size:0.85rem;">
-          <i class="fa-solid fa-key"></i>
-        </button>
-        <button id="btn-logout" class="btn-icon-sm btn-logout" title="Terminar Sessão">
-          <i class="fa-solid fa-power-off"></i>
-        </button>
-      </div>
-    </div>
-
-    <!-- Quick Filter: All vs Mine vs Overdue -->
+    <!-- Quick Filter: All vs Overdue -->
     <div class="sidebar-filter-bar">
-      <button id="filter-all-clients" class="sidebar-tab-btn active" title="Ver todos os clientes">
-        <span>Todos</span> <span class="tab-badge" id="sidebar-count-all">0</span>
-      </button>
-      <button id="filter-my-clients" class="sidebar-tab-btn" title="Ver apenas os clientes sob a sua responsabilidade">
-        <i class="fa-solid fa-user-check"></i> <span>Meus</span> <span class="tab-badge" id="sidebar-count-mine">0</span>
+      <button id="filter-all-clients" class="sidebar-tab-btn active">
+        Todos (<span id="sidebar-count-all">0</span>)
       </button>
       <button id="filter-overdue-clients" class="sidebar-tab-btn tab-overdue" title="Ver apenas clientes com prazos em atraso">
-        <i class="fa-solid fa-triangle-exclamation"></i> <span>Atraso</span> <span class="tab-badge" id="sidebar-count-overdue">0</span>
+        <i class="fa-solid fa-triangle-exclamation"></i> Atrasados (<span id="sidebar-count-overdue">0</span>)
       </button>
     </div>
 
@@ -119,19 +51,10 @@
     <!-- Consultants & Clients Accordion list -->
     <div class="sidebar-section">
       <div class="section-header">
-        <h3><i class="fa-solid fa-user-tie"></i> Consultores</h3>
-        <div style="display:flex;gap:4px;align-items:center;">
-          <button id="btn-sync-zoho-api" class="btn-icon-sm" title="Sincronizar Diretamente com o Zoho CRM em Tempo Real (API)">
-            <i class="fa-solid fa-arrows-rotate"></i>
-          </button>
-          <button id="btn-todoist-settings" class="btn-icon-sm" title="Todoist: Automação de Tarefas (#Geral e #Administrativo)" style="color:#e44332;">
-            <i class="fa-solid fa-list-check"></i>
-          </button>
+        <h3><i class="fa-solid fa-user-tie"></i> Consultores & Clientes</h3>
+        <div style="display:flex;gap:4px;">
           <button id="btn-google-drive" class="btn-icon-sm" title="Google Drive & Sheets: Conexão e Cópia de Segurança">
             <i class="fa-brands fa-google-drive"></i>
-          </button>
-          <button id="btn-manage-assistants" class="btn-icon-sm" title="Gerir Administrativos e Palavras-passe">
-            <i class="fa-solid fa-users-gear"></i>
           </button>
           <button id="btn-import-zoho" class="btn-icon-sm" title="Importar Lista de Clientes do Zoho CRM (Excel/CSV)">
             <i class="fa-solid fa-file-excel"></i>
@@ -194,35 +117,11 @@
           <button id="btn-open-remax" class="btn-portal btn-portal-remax" title="Abrir na RE/MAX Portugal">
             <span class="portal-dot remax-dot"></span> RE/MAX
           </button>
-          <button id="btn-open-era" class="btn-portal btn-portal-era" title="Abrir na ERA Imobiliária">
-            <span class="portal-dot era-dot"></span> ERA
-          </button>
-          <button id="btn-open-century21" class="btn-portal btn-portal-century21" title="Abrir na Century 21 Portugal">
-            <span class="portal-dot century21-dot"></span> C21
-          </button>
           <button id="btn-open-zome" class="btn-portal btn-portal-zome" title="Abrir na Zome Real Estate">
             <span class="portal-dot zome-dot"></span> Zome
           </button>
-          <button id="btn-open-supercasa" class="btn-portal btn-portal-supercasa" title="Abrir no Supercasa">
-            <span class="portal-dot supercasa-dot"></span> Supercasa
-          </button>
           <button id="btn-open-arys" class="btn-portal btn-portal-arys" title="Abrir na Arys Imobiliária">
             <span class="portal-dot arys-dot"></span> Arys
-          </button>
-          <button id="btn-open-maivas" class="btn-portal btn-portal-maivas" title="Abrir na Maïvas Imobiliária">
-            <span class="portal-dot maivas-dot"></span> Maïvas
-          </button>
-          <button id="btn-open-vivas" class="btn-portal btn-portal-vivas" title="Abrir na Vivas Imobiliária">
-            <span class="portal-dot vivas-dot"></span> Vivas
-          </button>
-          <button id="btn-open-ds" class="btn-portal btn-portal-ds" title="Abrir na DS Imobiliária">
-            <span class="portal-dot ds-dot"></span> DS
-          </button>
-          <button id="btn-open-realtyone" class="btn-portal btn-portal-realtyone" title="Abrir na Realty ONE Group">
-            <span class="portal-dot realtyone-dot"></span> Realty ONE
-          </button>
-          <button id="btn-open-all-portals" class="btn-portal btn-portal-all" style="background:rgba(199,82,51,0.08); color:var(--terracota); font-weight:800; border-left:1px solid var(--border);" title="Abrir pesquisas em todos os portais em novos separadores (1-Clique)">
-            <i class="fa-solid fa-layer-group"></i> Abrir Todos
           </button>
         </div>
         <button id="btn-add-direct-link" class="btn btn-secondary" style="border-color:#C75233; color:#C75233;" title="Adicionar um ou vários imóveis colando links diretos de qualquer portal">
@@ -234,6 +133,9 @@
         <button id="btn-show-bookmarklet" class="btn btn-secondary" title="Configurar Marcador de 1-Clique Universal (Idealista, RE/MAX, Zome, Arys)">
           <i class="fa-solid fa-bookmark"></i> Marcador
         </button>
+        <button id="btn-scrape-now" class="btn btn-secondary" title="Executar Bot Automático de Pesquisa">
+          <i class="fa-solid fa-robot"></i> Bot
+        </button>
         <button id="btn-drive-folder" class="btn btn-secondary" title="Verificar ou criar pasta do cliente no Google Drive">
           <i class="fa-solid fa-folder"></i> <span id="label-drive-folder">Criar Pasta</span>
         </button>
@@ -242,12 +144,6 @@
         </button>
         <button id="btn-drive-open" class="btn btn-secondary" title="Abrir a pasta deste cliente no Google Drive">
           <i class="fa-brands fa-google-drive"></i> Consultar na Drive
-        </button>
-        <button id="btn-zoho-deal-open" class="btn btn-secondary hidden" style="border-color:#e0523d; color:#e0523d;" title="Abrir Negócio diretamente no Zoho CRM">
-          <i class="fa-solid fa-cloud"></i> <span id="label-zoho-deal">Zoho CRM</span>
-        </button>
-        <button id="btn-zoho-add-note" class="btn btn-secondary hidden" title="Registar Nota / Histórico no Zoho CRM">
-          <i class="fa-solid fa-note-sticky"></i> Nota Zoho
         </button>
         <button id="btn-open-visits" class="btn btn-primary btn-visits-top" title="Marcador de Visitas integrado com Google Calendar">
           <i class="fa-solid fa-calendar-days"></i> Marcador de Visitas
@@ -432,10 +328,6 @@
           <label for="client-consultant">Consultor Responsável *</label>
           <select id="client-consultant" required></select>
         </div>
-        <div class="form-group">
-          <label for="client-assistant">Administrativo da Procura *</label>
-          <select id="client-assistant" required></select>
-        </div>
       </div>
 
       <div class="form-row">
@@ -580,94 +472,6 @@
         <button type="submit" class="btn btn-primary">Adicionar Consultor</button>
       </div>
     </form>
-  </div>
-</div>
-
-<!-- Modal 3.5: Manage Assistants & Logins -->
-<div id="modal-assistants" class="modal-backdrop hidden">
-  <div class="modal-card" style="max-width:680px;">
-    <div class="modal-header">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <i class="fa-solid fa-users-gear" style="color:var(--terracota); font-size:1.2rem;"></i>
-        <h3 style="margin:0;">Gestão de Administrativos & Logins</h3>
-      </div>
-      <button class="btn-close-modal">&times;</button>
-    </div>
-    <div class="modal-body" style="padding:1.2rem;">
-      <p style="font-size:0.88rem; color:#666; margin-bottom:1.1rem; line-height:1.5;">
-        Crie e gira as contas dos administrativos. As credenciais e palavras-passe ficam sincronizadas diretamente na folha <strong>Administrativos</strong> do Google Sheets.
-      </p>
-
-      <!-- Assistant Form (Add / Edit) -->
-      <form id="form-assistant" class="assistant-form-card" style="background:#FAF8F5; border:1px solid #E5DFD7; border-radius:10px; padding:1.1rem; margin-bottom:1.4rem;">
-        <input type="hidden" id="assistant-id">
-        <h4 id="assistant-form-title" style="margin:0 0 0.9rem 0; font-size:0.95rem; color:var(--castanho); display:flex; align-items:center; gap:6px;">
-          <i class="fa-solid fa-user-plus" style="color:var(--terracota);"></i> <span>Adicionar Novo Administrativo</span>
-        </h4>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="assistant-name" style="font-size:0.8rem; font-weight:600;">Nome Completo *</label>
-            <input type="text" id="assistant-name" required placeholder="Ex: Maria Santos">
-          </div>
-          <div class="form-group">
-            <label for="assistant-username" style="font-size:0.8rem; font-weight:600;">Username / Login *</label>
-            <input type="text" id="assistant-username" required placeholder="Ex: maria">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="assistant-password" style="font-size:0.8rem; font-weight:600;">Palavra-passe *</label>
-            <input type="text" id="assistant-password" required placeholder="Ex: 1234">
-          </div>
-          <div class="form-group">
-            <label for="assistant-role" style="font-size:0.8rem; font-weight:600;">Perfil de Acesso</label>
-            <select id="assistant-role">
-              <option value="staff">Administrativo (Vê apenas os seus)</option>
-              <option value="admin">Administrador (Vê e gere tudo)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="assistant-color" style="font-size:0.8rem; font-weight:600;">Cor</label>
-            <select id="assistant-color">
-              <option value="#5B7FA6">Azul (#5B7FA6)</option>
-              <option value="#5B8C6A">Verde (#5B8C6A)</option>
-              <option value="#C75233">Terracota (#C75233)</option>
-              <option value="#8C5B7F">Púrpura (#8C5B7F)</option>
-              <option value="#C79433">Dourado (#C79433)</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:0.6rem;">
-          <button type="button" id="btn-cancel-assistant-edit" class="btn btn-secondary btn-sm hidden">Cancelar Edição</button>
-          <button type="submit" id="btn-save-assistant" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Guardar Administrativo</button>
-        </div>
-      </form>
-
-      <!-- Assistants List Table -->
-      <h4 style="margin:0 0 0.6rem 0; font-size:0.9rem; color:var(--castanho); display:flex; align-items:center; gap:6px;">
-        <i class="fa-solid fa-list-check"></i> <span>Equipa de Administrativos Registados</span>
-      </h4>
-      <div class="assistants-table-wrapper" style="border:1px solid #E5DFD7; border-radius:8px; overflow:hidden;">
-        <table class="assistants-table" style="width:100%; border-collapse:collapse; font-size:0.85rem;">
-          <thead style="background:#F2EFEA; text-align:left;">
-            <tr>
-              <th style="padding:9px 12px;">Nome</th>
-              <th style="padding:9px 12px;">Login</th>
-              <th style="padding:9px 12px;">Password</th>
-              <th style="padding:9px 12px;">Perfil</th>
-              <th style="padding:9px 12px; text-align:center;">Clientes</th>
-              <th style="padding:9px 12px; text-align:right;">Ações</th>
-            </tr>
-          </thead>
-          <tbody id="assistants-table-body">
-            <!-- Rendered by JS -->
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <div class="modal-actions" style="margin-top:0; border-top:1px solid #E5DFD7; padding:1rem 1.2rem;">
-      <button type="button" class="btn btn-secondary btn-close-modal" style="margin-left:auto;">Fechar</button>
-    </div>
   </div>
 </div>
 
@@ -1066,221 +870,7 @@
   </div>
 </div>
 
-<!-- Modal Nota Zoho CRM (POP 00.05.05.POP) -->
-<div id="modal-zoho-note" class="modal-backdrop hidden">
-  <div class="modal-card" style="max-width:620px;">
-    <div class="modal-header">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <i class="fa-solid fa-file-signature" style="color:var(--terracota); font-size:1.25rem;"></i>
-        <div>
-          <h3 style="margin:0; font-size:1.1rem;">Registar Nota no Zoho CRM</h3>
-          <span style="font-size:0.75rem; color:#718096; font-weight:600;">Norma Operacional 00.05.05.POP (v2.0)</span>
-        </div>
-      </div>
-      <button type="button" class="btn-close-modal" id="btn-close-zoho-note-modal">&times;</button>
-    </div>
-    
-    <div style="background:#FFF9F5; border:1px solid #FBD38D; border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
-      <p style="font-size:0.84rem; color:var(--basalto); margin:0; line-height:1.4;">
-        Registo no Negócio Zoho de <strong id="zoho-note-client-name" style="color:var(--terracota);"></strong>
-      </p>
-      <span class="badge" style="background:#C75233; color:#fff; font-size:0.72rem; padding:2px 8px; border-radius:12px; font-weight:700;">POP 00.05.05</span>
-    </div>
-
-    <form id="form-zoho-note" class="modal-form" onsubmit="return false;">
-      <div class="form-row" style="display:grid; grid-template-columns:1.2fr 1.4fr; gap:10px; margin-bottom:12px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label for="select-zoho-note-author" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:4px; color:var(--basalto);">
-            <i class="fa-solid fa-user-pen"></i> Colaborador / Autor *
-          </label>
-          <select id="select-zoho-note-author" class="form-control" style="width:100%; padding:0.55rem; border:1px solid var(--border); border-radius:6px; font-size:0.88rem;" required>
-            <!-- Preenchido dinamicamente via JS -->
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label for="select-zoho-note-action" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:4px; color:var(--basalto);">
-            <i class="fa-solid fa-bolt"></i> Ação Operacional (POP) *
-          </label>
-          <select id="select-zoho-note-action" class="form-control" style="width:100%; padding:0.55rem; border:1px solid var(--border); border-radius:6px; font-size:0.88rem;" required>
-            <option value="Troca de Mensagens" selected>Troca de Mensagens</option>
-            <option value="Envio de Imóveis">Envio de Imóveis</option>
-            <option value="Chamada Efetuada">Chamada Efetuada</option>
-            <option value="Chamada Não Atendida">Chamada Não Atendida</option>
-            <option value="Email Enviado">Email Enviado</option>
-            <option value="Feedback de Visita">Feedback de Visita</option>
-            <option value="Proposta Recebida">Proposta Recebida</option>
-            <option value="Atualização de Critérios">Atualização de Critérios</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-row" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
-        <div class="form-group" style="margin-bottom:0;">
-          <label for="select-zoho-note-channel" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:4px; color:var(--basalto);">
-            <i class="fa-solid fa-satellite-dish"></i> Canal
-          </label>
-          <select id="select-zoho-note-channel" class="form-control" style="width:100%; padding:0.55rem; border:1px solid var(--border); border-radius:6px; font-size:0.88rem;">
-            <option value="WhatsApp" selected>WhatsApp</option>
-            <option value="Chamada Telefónica">Chamada Telefónica</option>
-            <option value="Idealista Farm / WhatsApp">Idealista Farm / WhatsApp</option>
-            <option value="Email">Email</option>
-            <option value="Presencial / Reunião">Presencial / Reunião</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin-bottom:0;">
-          <label style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:4px; color:var(--basalto);">
-            <i class="fa-solid fa-heading"></i> Título Gerado (POP 00.05.05)
-          </label>
-          <div id="zoho-note-title-preview" style="padding:0.55rem 0.8rem; background:#EDF2F7; border:1px solid #CBD5E0; border-radius:6px; font-size:0.85rem; font-weight:700; color:#2D3748; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            João Santos — Troca de Mensagens
-          </div>
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-bottom:14px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-          <label for="input-zoho-note-content" style="font-weight:700; font-size:0.82rem; color:var(--basalto);">
-            <i class="fa-solid fa-align-left"></i> Corpo da Nota (Estrutura Conforme Norma) *
-          </label>
-          <button type="button" id="btn-reload-pop-template" class="btn btn-secondary btn-sm" style="font-size:0.75rem; padding:2px 6px;" title="Repor modelo POP">
-            <i class="fa-solid fa-arrows-rotate"></i> Repor Modelo
-          </button>
-        </div>
-        <textarea id="input-zoho-note-content" rows="8" required style="width:100%; padding:0.65rem 0.85rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.86rem; font-family:monospace; resize:vertical; line-height:1.45;"></textarea>
-      </div>
-
-      <div class="modal-actions" style="display:flex; justify-content:flex-end; gap:8px;">
-        <button type="button" id="btn-cancel-zoho-note" class="btn btn-secondary">Cancelar</button>
-        <button type="button" id="btn-submit-zoho-note" class="btn btn-primary" style="background:var(--terracota); border-color:var(--terracota);">
-          <i class="fa-solid fa-cloud-arrow-up"></i> Gravar Nota no Zoho CRM
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal Todoist CRM & Automação -->
-<div id="modal-todoist" class="modal-backdrop hidden">
-  <div class="modal-card" style="max-width:580px;">
-    <div class="modal-header">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <i class="fa-solid fa-list-check" style="color:#e44332; font-size:1.3rem;"></i>
-        <h3 style="margin:0;">Integração & Automação Todoist</h3>
-      </div>
-      <button type="button" class="btn-close-modal" id="btn-close-todoist-modal">&times;</button>
-    </div>
-
-    <!-- Status Badge -->
-    <div id="todoist-status-badge" style="display:flex; align-items:center; gap:0.8rem; padding:0.9rem 1.1rem; border-radius:10px; margin-bottom:1.2rem; background:#fff5f5; border:1px solid #fed7d7;">
-      <i class="fa-solid fa-circle-notch fa-spin" style="color:#e53e3e; font-size:1.1rem;" id="todoist-status-icon"></i>
-      <div style="flex:1;">
-        <strong id="todoist-status-title" style="display:block; font-size:0.95rem; color:#9b2c2c;">A verificar conexão com Todoist...</strong>
-        <small id="todoist-status-desc" style="color:#742a2a;">Configure o seu API Token abaixo.</small>
-      </div>
-    </div>
-
-    <!-- Info Box -->
-    <div style="background:#FAF8F5; border:1px solid #E5DFD7; border-radius:8px; padding:0.8rem 1rem; margin-bottom:1.2rem; font-size:0.82rem; color:#555; line-height:1.5;">
-      <p style="margin:0 0 6px 0;"><strong>⚡ Regras Automáticas Ativas:</strong></p>
-      <ul style="margin:0; padding-left:1.2rem;">
-        <li><strong>Envio de Imóveis:</strong> Cria tarefa no <strong>#Geral</strong> atribuída ao consultor para verificar e pedir feedback.</li>
-        <li><strong>Clientes em Atraso:</strong> Cria tarefa no <strong>#Administrativo</strong> para o administrativo responsável com prazo para <strong>HOJE</strong>.</li>
-      </ul>
-    </div>
-
-    <form id="form-todoist-config" class="modal-form" onsubmit="return false;">
-      <div class="form-group" style="margin-bottom:12px;">
-        <label for="input-todoist-token" style="font-weight:700; font-size:0.85rem; display:block; margin-bottom:5px;">
-          <i class="fa-solid fa-key" style="color:#e44332;"></i> API Token Pessoal do Todoist *
-        </label>
-        <input type="password" id="input-todoist-token" placeholder="Cole o token do Todoist (Definições > Integrações > Developer / API Token)" style="width:100%; padding:0.65rem 0.85rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
-      </div>
-
-      <div class="form-row" style="display:flex; gap:12px; margin-bottom:12px;">
-        <div class="form-group" style="flex:1;">
-          <label for="input-todoist-feedback-project" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:5px;">
-            <i class="fa-solid fa-hashtag"></i> Canal / Projeto para Feedback
-          </label>
-          <input type="text" id="input-todoist-feedback-project" value="Geral" placeholder="Ex: Geral" style="width:100%; padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.85rem;">
-        </div>
-        <div class="form-group" style="flex:1;">
-          <label for="input-todoist-admin-project" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:5px;">
-            <i class="fa-solid fa-hashtag"></i> Canal / Projeto Administrativo (Atrasos)
-          </label>
-          <input type="text" id="input-todoist-admin-project" value="Administrativo" placeholder="Ex: Administrativo" style="width:100%; padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.85rem;">
-        </div>
-      </div>
-
-      <div class="form-group" style="margin-bottom:16px;">
-        <label for="input-todoist-feedback-days" style="font-weight:700; font-size:0.82rem; display:block; margin-bottom:5px;">
-          <i class="fa-regular fa-calendar-check"></i> Prazo para Pedir Feedback aos Clientes (Dias)
-        </label>
-        <input type="number" id="input-todoist-feedback-days" min="1" max="15" value="2" style="width:120px; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.85rem;">
-      </div>
-
-      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:14px; margin-top:10px;">
-        <div style="display:flex; gap:8px;">
-          <button type="button" id="btn-test-todoist" class="btn btn-secondary btn-sm">
-            <i class="fa-solid fa-vial"></i> Testar Ligação
-          </button>
-          <button type="button" id="btn-sync-todoist-overdue" class="btn btn-secondary btn-sm" style="color:#C75233; border-color:#C75233;">
-            <i class="fa-solid fa-clock-rotate-left"></i> Sincronizar Atrasos Agora
-          </button>
-        </div>
-        <div style="display:flex; gap:8px;">
-          <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
-          <button type="button" id="btn-save-todoist" class="btn btn-primary" style="background:#e44332; border-color:#e44332;">
-            <i class="fa-solid fa-floppy-disk"></i> Guardar
-          </button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Modal Alterar Palavra-passe -->
-<div id="modal-change-password" class="modal-backdrop hidden">
-  <div class="modal-card" style="max-width:440px;">
-    <div class="modal-header">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <i class="fa-solid fa-key" style="color:var(--terracota); font-size:1.2rem;"></i>
-        <h3 style="margin:0;">Alterar Palavra-passe</h3>
-      </div>
-      <button type="button" class="btn-close-modal" id="btn-close-change-password-modal">&times;</button>
-    </div>
-    <form id="form-change-password" class="modal-form" onsubmit="return false;" style="padding:1rem;">
-      <p id="change-pass-user-label" style="font-size:0.85rem; color:#666; margin-bottom:1rem;">
-        A alterar a palavra-passe para o utilizador: <strong id="change-pass-username"></strong>
-      </p>
-      <div class="form-group" style="margin-bottom:12px;">
-        <label for="input-current-pass" style="font-weight:700; font-size:0.85rem; display:block; margin-bottom:5px;">
-          Palavra-passe Atual *
-        </label>
-        <input type="password" id="input-current-pass" required placeholder="Insira a sua palavra-passe atual" style="width:100%; padding:0.65rem 0.85rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
-      </div>
-      <div class="form-group" style="margin-bottom:12px;">
-        <label for="input-new-pass" style="font-weight:700; font-size:0.85rem; display:block; margin-bottom:5px;">
-          Nova Palavra-passe *
-        </label>
-        <input type="password" id="input-new-pass" required placeholder="Mínimo 3 caracteres" style="width:100%; padding:0.65rem 0.85rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
-      </div>
-      <div class="form-group" style="margin-bottom:16px;">
-        <label for="input-confirm-new-pass" style="font-weight:700; font-size:0.85rem; display:block; margin-bottom:5px;">
-          Confirmar Nova Palavra-passe *
-        </label>
-        <input type="password" id="input-confirm-new-pass" required placeholder="Repita a nova palavra-passe" style="width:100%; padding:0.65rem 0.85rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
-      </div>
-      <div class="modal-actions" style="display:flex; justify-content:flex-end; gap:8px;">
-        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
-        <button type="button" id="btn-submit-change-password" class="btn btn-primary">
-          <i class="fa-solid fa-floppy-disk"></i> Guardar Nova Palavra-passe
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <div id="toast-container" class="toast-container"></div>
-<script src="/main.js?v=3.6"></script>
+<script src="/main.js?v=3.3"></script>
 </body>
 </html>

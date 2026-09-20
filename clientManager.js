@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { extractAndNormalizeAllLocations } = require('./geoResolver');
 
 const IS_VERCEL = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DATA_DIR = IS_VERCEL ? path.join(os.tmpdir(), 'sure_data') : path.join(__dirname, 'data');
@@ -37,7 +38,7 @@ function ensureDataFiles() {
   }
 
   // Copiar ficheiros existentes da pasta seed se a pasta de destino não tiver
-  ['clients.json', 'consultants.json', 'assistants.json', 'listings.json', 'visits.json', 'google_webhook.json', 'zoho_config.json', 'todoist_config.json'].forEach(fileName => {
+  ['clients.json', 'consultants.json', 'assistants.json', 'listings.json'].forEach(fileName => {
     const targetFile = path.join(DATA_DIR, fileName);
     const seedFile = path.join(SEED_DATA_DIR, fileName);
     if (!fs.existsSync(targetFile) && fs.existsSync(seedFile)) {
@@ -256,6 +257,15 @@ class ClientManager {
     syncWrite(ASSISTANTS_FILE, assistantsList);
   }
 
+  getAssistantIdForConsultant(consultantId) {
+    if (consultantId === 'consultant-rui' || consultantId === 'consultant-joao') return 'assistant-joao';
+    if (consultantId === 'consultant-nuno' || consultantId === 'consultant-pedro' || consultantId === 'consultant-pedro-oliveira') return 'assistant-pedro';
+    if (['consultant-diogo', 'consultant-gardiana', 'consultant-elizabete', 'consultant-elisabete'].includes(consultantId)) {
+      return 'assistant-nuno';
+    }
+    return 'assistant-nuno';
+  }
+
   // ── CLIENTS ────────────────────────────────────────────────────────────────
   getClients(filterAssistantId = null) {
     ensureDataFiles();
@@ -268,7 +278,9 @@ class ClientManager {
       clients.forEach(c => {
         if (!c.priority) c.priority = 'U';
         if (!c.consultant_id) c.consultant_id = 'consultant-geral';
-        if (!c.assistant_id) c.assistant_id = 'assistant-geral';
+        if (!c.assistant_id || c.assistant_id === 'assistant-geral') {
+          c.assistant_id = this.getAssistantIdForConsultant(c.consultant_id);
+        }
 
         const maxDays = PRIORITY_LIMITS[c.priority] || 5;
         const refDate = c.last_sent_at ? new Date(c.last_sent_at).getTime() : (c.created_at ? new Date(c.created_at).getTime() : now);
@@ -302,7 +314,19 @@ class ClientManager {
 
     if (!client.priority) client.priority = 'U';
     if (!client.consultant_id) client.consultant_id = 'consultant-geral';
-    if (!client.assistant_id) client.assistant_id = 'assistant-geral';
+    if (!client.assistant_id || client.assistant_id === 'assistant-geral') {
+      client.assistant_id = this.getAssistantIdForConsultant(client.consultant_id);
+    }
+
+    // Normalização Inteligente de Múltiplas Localizações e Erros Ortográficos
+    if (client.location || client.locations) {
+      const geoInfo = extractAndNormalizeAllLocations(client.locations || client.location, client.notes || '');
+      client.location = geoInfo.formatted;
+      client.locations = geoInfo.locations;
+    } else {
+      client.location = 'Braga';
+      client.locations = ['Braga'];
+    }
 
     if (!client.id) {
       client.id = 'client-' + Math.random().toString(36).substring(2, 9);

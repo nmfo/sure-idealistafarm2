@@ -8,18 +8,13 @@ function getGoogleApis() {
 }
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const XLSX = require('xlsx');
 const axios = require('axios');
 
-const IS_VERCEL = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
-const DATA_DIR = IS_VERCEL ? path.join(os.tmpdir(), 'sure_data') : path.join(__dirname, 'data');
-const SEED_DATA_DIR = path.join(__dirname, 'data');
-const CREDENTIALS_PATH = path.join(DATA_DIR, 'google_credentials.json');
-const WEBHOOK_PATH = path.join(DATA_DIR, 'google_webhook.json');
-
 // Root folder padrão fornecida pelo utilizador
 const DEFAULT_ROOT_FOLDER_ID = '12ZPicg-lxXy2nyNowmvEUCQNkQi_smaJ';
+const CREDENTIALS_PATH = path.join(__dirname, 'data', 'google_credentials.json');
+const WEBHOOK_PATH = path.join(__dirname, 'data', 'google_webhook.json');
 
 class GoogleDriveService {
   constructor() {
@@ -37,20 +32,12 @@ class GoogleDriveService {
    */
   async initAuth() {
     // 1. Verificar se existe Webhook URL configurado
-    if (!this.webhookUrl) {
-      if (fs.existsSync(WEBHOOK_PATH)) {
-        try {
-          const raw = fs.readFileSync(WEBHOOK_PATH, 'utf-8');
-          const data = JSON.parse(raw);
-          if (data.url) this.webhookUrl = data.url;
-        } catch (e) {}
-      } else if (fs.existsSync(path.join(SEED_DATA_DIR, 'google_webhook.json'))) {
-        try {
-          const raw = fs.readFileSync(path.join(SEED_DATA_DIR, 'google_webhook.json'), 'utf-8');
-          const data = JSON.parse(raw);
-          if (data.url) this.webhookUrl = data.url;
-        } catch (e) {}
-      }
+    if (!this.webhookUrl && fs.existsSync(WEBHOOK_PATH)) {
+      try {
+        const raw = fs.readFileSync(WEBHOOK_PATH, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data.url) this.webhookUrl = data.url;
+      } catch (e) {}
     }
 
     if (this.webhookUrl) {
@@ -71,11 +58,6 @@ class GoogleDriveService {
       if (!credentials && fs.existsSync(CREDENTIALS_PATH)) {
         try {
           const raw = fs.readFileSync(CREDENTIALS_PATH, 'utf-8');
-          credentials = JSON.parse(raw);
-        } catch (e) {}
-      } else if (!credentials && fs.existsSync(path.join(SEED_DATA_DIR, 'google_credentials.json'))) {
-        try {
-          const raw = fs.readFileSync(path.join(SEED_DATA_DIR, 'google_credentials.json'), 'utf-8');
           credentials = JSON.parse(raw);
         } catch (e) {}
       }
@@ -111,45 +93,14 @@ class GoogleDriveService {
     }
   }
 
-  async saveWebhookUrl(url) {
-    try {
-      this.webhookUrl = url ? url.trim() : null;
-      this.initialized = !!this.webhookUrl;
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
-      }
-      try {
-        fs.writeFileSync(WEBHOOK_PATH, JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
-        if (SEED_DATA_DIR && SEED_DATA_DIR !== DATA_DIR && fs.existsSync(SEED_DATA_DIR)) {
-          try {
-            fs.writeFileSync(path.join(SEED_DATA_DIR, 'google_webhook.json'), JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
-          } catch (e) {}
-        }
-      } catch (writeErr) {
-        console.warn('Aviso ao gravar google_webhook.json no disco (a usar memória):', writeErr.message);
-      }
-      return await this.initAuth();
-    } catch (e) {
-      throw new Error(`Falha ao gravar Webhook: ${e.message}`);
-    }
-  }
-
   async saveCredentials(credentialsJson) {
     try {
       const parsed = typeof credentialsJson === 'string' ? JSON.parse(credentialsJson) : credentialsJson;
-      if (!fs.existsSync(DATA_DIR)) {
-        fs.mkdirSync(DATA_DIR, { recursive: true });
+      const dataDir = path.join(__dirname, 'data');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
       }
-      try {
-        fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(parsed, null, 2), 'utf-8');
-        if (SEED_DATA_DIR && SEED_DATA_DIR !== DATA_DIR && fs.existsSync(SEED_DATA_DIR)) {
-          try {
-            fs.writeFileSync(path.join(SEED_DATA_DIR, 'google_credentials.json'), JSON.stringify(parsed, null, 2), 'utf-8');
-          } catch (e) {}
-        }
-      } catch (writeErr) {
-        console.warn('Aviso ao gravar credenciais no disco:', writeErr.message);
-      }
+      fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(parsed, null, 2), 'utf-8');
       return await this.initAuth();
     } catch (e) {
       throw new Error(`Falha ao gravar credenciais: ${e.message}`);
@@ -222,14 +173,24 @@ class GoogleDriveService {
   /**
    * Mapeia dinamicamente os valores do imóvel de acordo com os nomes reais das colunas no Excel/Sheet do cliente
    */
-  mapListingToHeaders(headers, listing, client, consultantName = 'SURE Equipa') {
+  mapListingToHeaders(headers, listing, client, consultantName = 'SURE Equipa', assistantName = '') {
     const now = new Date();
     const dateFormatted = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
     const timeFormatted = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const fullDateTime = `${dateFormatted} ${timeFormatted}`;
 
-    return headers.map(h => {
+    const resolvedAssistant = assistantName || (client && client.assistant_name) || (client && client.assistant_id === 'assistant-nuno' ? 'Nuno Oliveira' : (client && client.assistant_id === 'assistant-pedro' ? 'Pedro Barros' : (client && client.assistant_id === 'assistant-joao' ? 'João Santos' : 'Nuno Oliveira')));
+
+    return headers.map((h, idx) => {
       const col = String(h || '').trim().toLowerCase();
+
+      // 1. Administrativo Responsável / Quem enviou as opções (1ª coluna / dropdown)
+      if (/administrativ[oa]|assistente|enviado\s*por|colaborador|operador|admin\b|utilizador/i.test(col)) {
+        return resolvedAssistant;
+      }
+      if (idx === 0 && (/respons[aá]vel|membro|equipa|dropdown/i.test(col) || !col)) {
+        return resolvedAssistant;
+      }
 
       // Data / Horário
       if (/data.*envio|data|dia|date/i.test(col)) return fullDateTime;
@@ -239,7 +200,7 @@ class GoogleDriveService {
       if (/im[oó]vel|t[ií]tulo|nome|descri[cç][aã]o|designa[cç][aã]o/i.test(col)) return listing.title || 'Imóvel Idealista';
 
       // Tipologia
-      if (/tipologia|t\d|quartos|tipo/i.test(col)) return listing.typology || (client.typology ? client.typology.join('/') : '-');
+      if (/tipologia|t\d|quartos|tipo/i.test(col)) return listing.typology || (client.typology ? (Array.isArray(client.typology) ? client.typology.join('/') : client.typology) : '-');
 
       // Preço / Valor
       if (/pre[cç]o\s*m2|pre[cç]o.*m²|valor.*m2|€\/m²/i.test(col)) return listing.price_m2 || '-';
@@ -255,7 +216,7 @@ class GoogleDriveService {
       if (/score|match|relev[aâ]ncia|pontua[cç][aã]o/i.test(col)) return listing.match_score ? `${listing.match_score}%` : '-';
 
       // Consultor
-      if (/consultor|comercial|agente|respons[aá]vel/i.test(col)) return consultantName;
+      if (/consultor|comercial|agente/i.test(col)) return consultantName;
 
       // Estado / Feedback
       if (/estado|status|feedback|observa[cç][oõ]es|notas/i.test(col)) return 'Enviado ao Cliente';
@@ -267,7 +228,7 @@ class GoogleDriveService {
   /**
    * Adiciona o imóvel na folha de cálculo existente (Google Sheets ou .xlsx) respeitando o formato existente
    */
-  async appendToExistingSheetOrExcel(folderId, client, listing, consultantName = 'SURE Equipa') {
+  async appendToExistingSheetOrExcel(folderId, client, listing, consultantName = 'SURE Equipa', assistantName = '') {
     if (!this.initialized && !(await this.initAuth())) {
       throw new Error('Google Drive não autenticado.');
     }
@@ -297,19 +258,19 @@ class GoogleDriveService {
 
       let headers = (headerRes.data.values && headerRes.data.values[0]) ? headerRes.data.values[0] : null;
 
-      // Se a folha estiver vazia, criar cabeçalhos oficiais
+      // Se a folha estiver vazia, criar cabeçalhos oficiais com Administrativo na 1ª coluna
       if (!headers || headers.length === 0) {
-        headers = ['Data de Envio', 'Título do Imóvel', 'Tipologia', 'Preço (€)', 'Preço/m²', 'Localização / Freguesia', 'Link Idealista', 'Score Match', 'Consultor', 'Notas / Estado'];
+        headers = ['Administrativo', 'Data de Envio', 'Título do Imóvel', 'Tipologia', 'Preço (€)', 'Preço/m²', 'Localização / Freguesia', 'Link Idealista', 'Score Match', 'Consultor', 'Notas / Estado'];
         await this.sheets.spreadsheets.values.update({
           spreadsheetId: googleSheet.id,
-          range: 'A1:J1',
+          range: 'A1:K1',
           valueInputOption: 'USER_ENTERED',
           resource: { values: [headers] }
         });
       }
 
       // Mapear dados do imóvel para as colunas existentes
-      const rowValues = this.mapListingToHeaders(headers, listing, client, consultantName);
+      const rowValues = this.mapListingToHeaders(headers, listing, client, consultantName, assistantName);
 
       // Adicionar linha
       const appendRes = await this.sheets.spreadsheets.values.append({
@@ -349,21 +310,21 @@ class GoogleDriveService {
       supportsAllDrives: true
     });
 
-    const standardHeaders = ['Data de Envio', 'Título do Imóvel', 'Tipologia', 'Preço (€)', 'Preço/m²', 'Localização / Freguesia', 'Link Idealista', 'Score Match', 'Consultor', 'Notas / Estado'];
+    const standardHeaders = ['Administrativo', 'Data de Envio', 'Título do Imóvel', 'Tipologia', 'Preço (€)', 'Preço/m²', 'Localização / Freguesia', 'Link Idealista', 'Score Match', 'Consultor', 'Notas / Estado'];
     
     // Inserir cabeçalhos
     await this.sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: "'Imóveis Enviados'!A1:J1",
+      range: "'Imóveis Enviados'!A1:K1",
       valueInputOption: 'USER_ENTERED',
       resource: { values: [standardHeaders] }
     });
 
     // Inserir primeiro imóvel
-    const firstRow = this.mapListingToHeaders(standardHeaders, listing, client, consultantName);
+    const firstRow = this.mapListingToHeaders(standardHeaders, listing, client, consultantName, assistantName);
     await this.sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: "'Imóveis Enviados'!A:J",
+      range: "'Imóveis Enviados'!A:K",
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       resource: { values: [firstRow] }
@@ -527,12 +488,25 @@ class GoogleDriveService {
     };
   }
 
+  async saveWebhookUrl(url) {
+    this.webhookUrl = (url || '').trim();
+    const dataDir = path.join(__dirname, 'data');
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(WEBHOOK_PATH, JSON.stringify({ url: this.webhookUrl }, null, 2), 'utf-8');
+    this.initialized = !!this.webhookUrl;
+    return this.initialized;
+  }
+
   /**
    * Operação Completa: Regista um ou vários imóveis enviados na Drive
    */
-  async recordSentProperties(client, listings, consultantName = 'SURE Equipa') {
+  async recordSentProperties(client, listings, consultantName = 'SURE Equipa', assistantName = '') {
     const listArray = Array.isArray(listings) ? listings : (listings ? [listings] : []);
     if (!listArray.length) return null;
+
+    const resolvedAssistant = assistantName || (client && client.assistant_name) || (client && client.assistant_id === 'assistant-nuno' ? 'Nuno Oliveira' : (client && client.assistant_id === 'assistant-pedro' ? 'Pedro Barros' : (client && client.assistant_id === 'assistant-joao' ? 'João Santos' : 'Nuno Oliveira')));
 
     if (this.webhookUrl) {
       try {
@@ -543,6 +517,8 @@ class GoogleDriveService {
           client_location: client.location || '',
           client_typology: client.typology ? client.typology.join('/') : '',
           consultant_name: consultantName || 'SURE Equipa',
+          assistant_name: resolvedAssistant,
+          author_name: resolvedAssistant,
           listings: listArray.map(listing => ({
             id: listing.id,
             title: listing.title,
@@ -570,8 +546,8 @@ class GoogleDriveService {
     return null;
   }
 
-  async recordSentProperty(client, listing, consultantName = 'SURE Equipa') {
-    const webhookRes = await this.recordSentProperties(client, [listing], consultantName);
+  async recordSentProperty(client, listing, consultantName = 'SURE Equipa', assistantName = '') {
+    const webhookRes = await this.recordSentProperties(client, [listing], consultantName, assistantName);
     if (webhookRes) return webhookRes;
 
     if (!this.initialized && !(await this.initAuth())) {
@@ -582,7 +558,7 @@ class GoogleDriveService {
     const folder = await this.findOrCreateClientFolder(client.name);
 
     // 2. Procurar folha de cálculo existente (Excel ou Sheets) e mapear para o formato existente
-    const sheetResult = await this.appendToExistingSheetOrExcel(folder.folderId, client, listing, consultantName);
+    const sheetResult = await this.appendToExistingSheetOrExcel(folder.folderId, client, listing, consultantName, assistantName);
 
     return {
       folder,

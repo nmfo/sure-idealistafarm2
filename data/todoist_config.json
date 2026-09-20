@@ -4,7 +4,7 @@
   "admin_project_name": "Administrativo",
   "feedback_project_name": "Geral",
   "feedback_due_days": 2,
-  "last_sync_at": "2026-09-11T17:03:00.965Z",
+  "last_sync_at": "2026-09-20T19:50:16.581Z",
   "created_tasks": {
     "overdue_client-daniela-costa-2_2026-09-11": 1789139905146,
     "overdue_client-filipe-fernandes-3_2026-09-11": 1789139905146,
@@ -23,7 +23,8 @@
     "overdue_client-jose-marinho-rosa-maria-130_2026-09-11": 1789139905146,
     "overdue_client-ana-moura-141_2026-09-11": 1789139905146,
     "overdue_client-ricardo-pinto-142_2026-09-11": 1789139905146,
-    "overdue_client-vanessa-machado-146_2026-09-11": 1789139905146
+    "overdue_client-vanessa-machado-146_2026-09-11": 1789139905146,
+    "overdue_client-zoho-944040000002076001_2026-09-20": 1789929967130
   },
-  "updated_at": "2026-09-11T17:03:00.970Z"
+  "updated_at": "2026-09-20T19:50:16.581Z"
 }

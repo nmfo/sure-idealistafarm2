@@ -61,7 +61,7 @@
   fetch(SERVER + '/api/import-active-client-html', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ html: html, url: window.location.href })
+    body: JSON.stringify({ html: html })
   })
   .then(function(r){ return r.json(); })
   .then(function(data){
