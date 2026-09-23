@@ -2,8 +2,8 @@
   "client_id": "1000.IY3MVOLTEOD7YFFNQ2CN68D43L23AC",
   "client_secret": "96a6f775d7831cc26d1d46a697474608329fb13871",
   "refresh_token": "1000.e7645dea78429ad94f9238ddab299d20.e98aa91dd75b4b22e40689ec629c578f",
-  "access_token": "1000.937780fb13242f3d33c4c94ecfe0aecd.0cfd3deeec8b94dd120b6ad54c7b6c62",
-  "expires_at": 1789933291822,
+  "access_token": "1000.3ad6af7141d84ceed57d5a92ade8c12d.8801e448a42b4fc0c9874d8d1141a4cf",
+  "expires_at": 1790172524545,
   "api_domain": "https://www.zohoapis.eu",
   "accounts_url": "https://accounts.zoho.eu"
 }

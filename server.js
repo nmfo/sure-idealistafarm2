@@ -414,17 +414,34 @@ app.post('/api/clients/reassign', (req, res) => {
   res.json({ success: true, client: updated });
 });
 
-app.post('/api/clients/reassign-assistant', (req, res) => {
+app.post('/api/clients/reassign-assistant', async (req, res) => {
   const { client_id, assistant_id } = req.body;
   if (!client_id || !assistant_id) {
     return res.status(400).json({ error: 'client_id e assistant_id são obrigatórios' });
   }
   const updated = clientManager.reassignClientAssistant(client_id, assistant_id);
   if (!updated) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+  const assistants = clientManager.getAssistants();
+  const assistant = assistants.find(a => a.id === assistant_id);
+  const assistantName = (assistant && assistant.name) || assistant_id;
+
   try {
     if (googleDriveService.webhookUrl) googleDriveService.saveMasterClient(updated);
   } catch(e) {}
-  res.json({ success: true, client: updated });
+
+  let zohoSync = null;
+  if (updated.zoho_id && zohoService.isConfigured()) {
+    try {
+      const noteTitle = `📌 Administrativo Responsável: ${assistantName}`;
+      const noteContent = `Atribuição de Administrativo:\n\n• Cliente: ${updated.name}\n• Administrativo Responsável: ${assistantName}\n• Atualizado em: ${new Date().toLocaleString('pt-PT')}\n• Origem: Aplicação SURE (Idealista Farm)`;
+      zohoSync = await zohoService.addDealNote(updated.zoho_id, noteTitle, noteContent);
+    } catch(zErr) {
+      console.warn('Aviso sincronização de assistente no Zoho CRM:', zErr.message);
+    }
+  }
+
+  res.json({ success: true, client: updated, zohoSync });
 });
 
 app.post('/api/clients/mark-sent', (req, res) => {
