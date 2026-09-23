@@ -37,18 +37,21 @@ function ensureDataFiles() {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 
-  // Copiar ficheiros existentes da pasta seed se a pasta de destino não tiver
+  // Copiar ficheiros existentes da pasta seed se a pasta de destino não tiver ou ao iniciar no Vercel
   ['clients.json', 'consultants.json', 'assistants.json', 'listings.json'].forEach(fileName => {
     const targetFile = path.join(DATA_DIR, fileName);
     const seedFile = path.join(SEED_DATA_DIR, fileName);
-    if (!fs.existsSync(targetFile) && fs.existsSync(seedFile)) {
-      try {
-        fs.copyFileSync(seedFile, targetFile);
-      } catch (e) {
-        console.warn(`Aviso ao copiar ${fileName}:`, e.message);
+    if (fs.existsSync(seedFile)) {
+      if (!fs.existsSync(targetFile) || (IS_VERCEL && !global.__dataSeeded)) {
+        try {
+          fs.copyFileSync(seedFile, targetFile);
+        } catch (e) {
+          console.warn(`Aviso ao copiar ${fileName}:`, e.message);
+        }
       }
     }
   });
+  global.__dataSeeded = true;
 
   if (!fs.existsSync(CONSULTANTS_FILE)) {
     const defaultConsultants = [
