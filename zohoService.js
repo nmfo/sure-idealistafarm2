@@ -482,11 +482,6 @@ class ZohoService {
     const mergedClients = [...existingClients];
 
     for (const deal of deals) {
-      if (!isBuyerDeal(deal)) {
-        skippedCount++;
-        continue;
-      }
-
       const dealName = String(
         deal.Nome_do_Cliente_Potencial || 
         deal.Deal_Name || 
@@ -494,13 +489,23 @@ class ZohoService {
         ''
       ).trim();
 
+      const cleanName = dealName ? dealName.toLowerCase().trim() : '';
+      const existing = clientMap.get('zoho_' + deal.id) || (cleanName ? clientMap.get('name_' + cleanName) : null);
+
+      if (!isBuyerDeal(deal)) {
+        skippedCount++;
+        // Se este negócio passou para Arquivo, CPCV, Fechado ou Angariação, remover do banco ativo
+        if (existing) {
+          const idx = mergedClients.findIndex(c => c.id === existing.id || c.zoho_id === String(deal.id));
+          if (idx !== -1) mergedClients.splice(idx, 1);
+        }
+        continue;
+      }
+
       if (!dealName || dealName.length < 2) {
         skippedCount++;
         continue;
       }
-
-      const cleanName = dealName.toLowerCase().trim();
-      const existing = clientMap.get('zoho_' + deal.id) || clientMap.get('name_' + cleanName);
 
       const mappedClient = this.mapDealToClient(deal, existing, existingConsultants);
 
@@ -520,7 +525,7 @@ class ZohoService {
 
     clientManager.saveAllClients(mergedClients);
 
-    console.log('✅ Sincronização Zoho concluída: +' + addedCount + ' novos, ' + updatedCount + ' atualizados, ' + skippedCount + ' ignorados.');
+    console.log('✅ Sincronização Zoho concluída: +' + addedCount + ' novos, ' + updatedCount + ' atualizados, ' + skippedCount + ' ignorados/removidos.');
 
     return {
       success: true,

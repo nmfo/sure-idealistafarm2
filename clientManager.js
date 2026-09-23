@@ -277,10 +277,7 @@ class ClientManager {
       // Compute overdue metadata for each client
       clients.forEach(c => {
         if (!c.priority) c.priority = 'U';
-        if (!c.consultant_id) c.consultant_id = 'consultant-geral';
-        if (!c.assistant_id || c.assistant_id === 'assistant-geral') {
-          c.assistant_id = this.getAssistantIdForConsultant(c.consultant_id);
-        }
+        c.assistant_id = this.getAssistantIdForConsultant(c.consultant_id);
 
         const maxDays = PRIORITY_LIMITS[c.priority] || 5;
         const refDate = c.last_sent_at ? new Date(c.last_sent_at).getTime() : (c.created_at ? new Date(c.created_at).getTime() : now);
