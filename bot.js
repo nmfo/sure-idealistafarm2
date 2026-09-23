@@ -1,6 +1,13 @@
-const { chromium } = require('playwright-extra');
-const stealth = require('puppeteer-extra-plugin-stealth')();
-chromium.use(stealth);
+let chromiumInstance = null;
+function getChromium() {
+  if (!chromiumInstance) {
+    const { chromium } = require('playwright-extra');
+    const stealth = require('puppeteer-extra-plugin-stealth')();
+    chromium.use(stealth);
+    chromiumInstance = chromium;
+  }
+  return chromiumInstance;
+}
 
 const path = require('path');
 const fs = require('fs');
@@ -117,7 +124,7 @@ async function runAutoSearchBot(clientId) {
   try {
     setStatus('A iniciar navegador seguro...');
 
-    browser = await chromium.launch({
+    browser = await getChromium().launch({
       channel: 'chrome',
       headless: false,
       args: [
@@ -238,7 +245,7 @@ async function fetchDirectListingWithBrowser(rawUrls, clientLocation = '') {
   const results = [];
 
   try {
-    context = await chromium.launchPersistentContext(SESSION_DIR, {
+    context = await getChromium().launchPersistentContext(SESSION_DIR, {
       headless: true,
       args: ['--disable-blink-features=AutomationControlled', '--no-sandbox'],
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',

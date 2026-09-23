@@ -4,10 +4,25 @@ const path = require('path');
 const clientManager = require('./clientManager');
 const googleDriveService = require('./googleDriveService');
 const { parseListingsHtml, fetchDirectListingFromUrl } = require('./scraper');
-const { runAutoSearchBot, fetchDirectListingWithBrowser } = require('./bot');
 const { parseZohoExcel } = require('./importer');
 const zohoService = require('./zohoService');
 const todoistService = require('./todoistService');
+
+let botModule = null;
+function getBot() {
+  if (!botModule) {
+    try {
+      botModule = require('./bot');
+    } catch (e) {
+      console.warn('Bot de browser indisponível em serverless:', e.message);
+      botModule = {
+        runAutoSearchBot: async () => { throw new Error('O Bot Playwright com navegador requer execução local/VPS. Em ambiente Vercel/Cloud utilize a importação direta, extensão ou colagem.'); },
+        fetchDirectListingWithBrowser: async () => []
+      };
+    }
+  }
+  return botModule;
+}
 
 process.on('uncaughtException', (err) => {
   console.error('⚠️ [SERVER SAFEGUARD] Exceção capturada:', err.message);
@@ -439,7 +454,7 @@ app.post('/api/scrape/:clientId', async (req, res) => {
   if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
   try {
-    const result = await runAutoSearchBot(client.id);
+    const result = await getBot().runAutoSearchBot(client.id);
     res.json({
       success: true,
       client_id: client.id,
@@ -579,7 +594,7 @@ app.post('/api/import-link', async (req, res) => {
   // Processar Idealista com Playwright Stealth persistent session
   if (idealistaUrls.length > 0) {
     try {
-      const browserResults = await fetchDirectListingWithBrowser(idealistaUrls, client.location);
+      const browserResults = await getBot().fetchDirectListingWithBrowser(idealistaUrls, client.location);
       if (Array.isArray(browserResults)) {
         fetchedListings.push(...browserResults);
       }
@@ -654,7 +669,7 @@ app.post('/api/listings/enrich/:clientId', async (req, res) => {
 
   if (idealistaUrls.length > 0) {
     try {
-      const browserResults = await fetchDirectListingWithBrowser(idealistaUrls, client.location);
+      const browserResults = await getBot().fetchDirectListingWithBrowser(idealistaUrls, client.location);
       if (Array.isArray(browserResults)) {
         enrichedListings.push(...browserResults);
       }
