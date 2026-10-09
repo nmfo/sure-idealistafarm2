@@ -124,6 +124,9 @@
           <button id="btn-sync-zoho-api" class="btn-icon-sm" title="Sincronizar Diretamente com o Zoho CRM em Tempo Real (API)">
             <i class="fa-solid fa-arrows-rotate"></i>
           </button>
+          <button id="btn-open-whatsapp-modal" class="btn-icon-sm" title="WhatsApp: Conexão Geral (933 687 879)" style="color:#25D366;">
+            <i class="fa-brands fa-whatsapp"></i>
+          </button>
           <button id="btn-todoist-settings" class="btn-icon-sm" title="Todoist: Automação de Tarefas (#Geral e #Administrativo)" style="color:#e44332;">
             <i class="fa-solid fa-list-check"></i>
           </button>
@@ -249,6 +252,9 @@
         <button id="btn-zoho-add-note" class="btn btn-secondary hidden" title="Registar Nota / Histórico no Zoho CRM">
           <i class="fa-solid fa-note-sticky"></i> Nota Zoho
         </button>
+        <button id="btn-open-whatsapp-approval" class="btn btn-primary" style="background:#25D366; border-color:#25D366; color:#fff;" title="Aprovar e Enviar Opções via WhatsApp para o Grupo [SURE]">
+          <i class="fa-brands fa-whatsapp"></i> Enviar WhatsApp
+        </button>
         <button id="btn-open-visits" class="btn btn-primary btn-visits-top" title="Marcador de Visitas integrado com Google Calendar">
           <i class="fa-solid fa-calendar-days"></i> Marcador de Visitas
           <span id="badge-visits-count" class="badge-visits-counter hidden">0</span>
@@ -267,6 +273,9 @@
           </div>
         </div>
         <div class="top3-actions">
+          <button id="btn-whatsapp-top3" class="btn btn-sm" style="background:#25D366;color:#fff;border:none;font-weight:600;" title="Enviar Top 3 diretamente por WhatsApp">
+            <i class="fa-brands fa-whatsapp"></i> WhatsApp Top 3
+          </button>
           <button id="btn-copy-top3" class="btn btn-primary btn-sm">
             <i class="fa-solid fa-copy"></i> Copiar os 3 Links Juntos
           </button>
@@ -339,6 +348,9 @@
         <span class="selection-hint">Prontos para copiar e enviar ao cliente</span>
       </div>
       <div class="selection-dock-actions">
+        <button id="btn-whatsapp-selection" class="btn btn-sm" style="background:#25D366;color:#fff;border:none;font-weight:600;" title="Enviar imóveis selecionados por WhatsApp">
+          <i class="fa-brands fa-whatsapp"></i> WhatsApp Selecionados
+        </button>
         <button id="btn-copy-selection" class="btn btn-primary btn-sm">
           <i class="fa-solid fa-copy"></i> Copiar Selecionados Juntos
         </button>
@@ -1280,7 +1292,164 @@
   </div>
 </div>
 
+<!-- Modal WhatsApp 1: Conexão e QR Code -->
+<div id="modal-whatsapp-connect" class="modal-backdrop hidden">
+  <div class="modal-card" style="max-width:480px;">
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <i class="fa-brands fa-whatsapp" style="color:#25D366; font-size:1.5rem;"></i>
+        <div>
+          <h3 style="margin:0; font-size:1.1rem;">WhatsApp Oficial SURE</h3>
+          <small style="color:#777;">Número Geral: <strong>933 687 879</strong></small>
+        </div>
+      </div>
+      <button type="button" class="btn-close-modal">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:1.2rem; text-align:center;">
+      <!-- Connection Status Card -->
+      <div id="whatsapp-status-card" class="whatsapp-status-box" style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:1.2rem; margin-bottom:1.2rem;">
+        <div id="whatsapp-status-icon" style="font-size:2rem; color:#22C55E; margin-bottom:0.5rem;">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <h4 id="whatsapp-status-title" style="margin:0 0 4px 0; color:#15803D; font-size:1.05rem;">WhatsApp Conectado</h4>
+        <p id="whatsapp-status-details" style="margin:0; font-size:0.85rem; color:#166534;">Número Ativo: <strong>+351 933 687 879</strong></p>
+      </div>
+
+      <!-- QR Code Box (hidden when connected) -->
+      <div id="whatsapp-qr-box" class="hidden" style="display:none; margin:1rem 0;">
+        <p style="font-size:0.88rem; color:#555; margin-bottom:0.8rem; line-height:1.4;">
+          Abra o WhatsApp no telemóvel geral (<strong>933 687 879</strong>), vá a <strong>Dispositivos Conectados</strong> e aponte a câmara para o código:
+        </p>
+        <div style="display:inline-block; padding:10px; background:#fff; border:2px solid #25D366; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,0.08);">
+          <img id="whatsapp-qr-img" src="" alt="QR Code WhatsApp" style="width:230px; height:230px; display:block;">
+        </div>
+        <div style="margin-top:10px;">
+          <button type="button" id="btn-refresh-whatsapp-qr" class="btn btn-secondary btn-sm">
+            <i class="fa-solid fa-arrows-rotate"></i> Atualizar Código
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+        <button type="button" id="btn-disconnect-whatsapp" class="btn btn-secondary btn-sm" style="color:#DC2626; border-color:#FECACA;">
+          <i class="fa-solid fa-power-off"></i> Desconectar Sessão
+        </button>
+        <button type="button" id="btn-reconnect-whatsapp" class="btn btn-primary btn-sm" style="background:#25D366; border-color:#25D366;">
+          <i class="fa-solid fa-qrcode"></i> Conectar / Gerar QR
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal WhatsApp 2: Painel de Aprovação e Envio de Opções -->
+<div id="modal-whatsapp-approval" class="modal-backdrop hidden">
+  <div class="modal-card modal-card-lg" style="max-width:850px;">
+    <div class="modal-header" style="background:#F0FDF4; border-bottom:1px solid #BBF7D0;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="width:40px; height:40px; background:#25D366; color:#fff; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.3rem;">
+          <i class="fa-brands fa-whatsapp"></i>
+        </div>
+        <div>
+          <h3 style="margin:0; font-size:1.15rem; color:#14532D;">Aprovação de Envio WhatsApp & Criação de Grupo</h3>
+          <small style="color:#166534;">Confirme os detalhes do grupo e aprove os imóveis antes do disparo</small>
+        </div>
+      </div>
+      <button type="button" class="btn-close-modal">&times;</button>
+    </div>
+
+    <div class="modal-body" style="padding:1.3rem;">
+      <!-- Group & Participants Card -->
+      <div class="whatsapp-group-preview-card" style="display:flex; gap:1.2rem; align-items:center; background:#FAF8F5; border:1px solid #E5DFD7; border-radius:14px; padding:1.1rem; margin-bottom:1.3rem;">
+        <div class="group-avatar-wrapper" style="position:relative; flex-shrink:0;">
+          <img id="whatsapp-preview-group-avatar" src="/assets/sure_group_avatar.jpg" alt="SURE Avatar" style="width:72px; height:72px; border-radius:50%; border:3px solid #C75233; object-fit:cover; box-shadow:0 4px 10px rgba(0,0,0,0.12);">
+          <span style="position:absolute; bottom:-2px; right:-2px; background:#25D366; color:#fff; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; border:2px solid #fff;"><i class="fa-brands fa-whatsapp"></i></span>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span class="badge" id="badge-group-status" style="background:#25D366; color:#fff; font-size:0.75rem; font-weight:700;">Novo Grupo</span>
+            <h4 id="whatsapp-preview-group-title" style="margin:0; font-size:1.15rem; color:var(--castanho);">[SURE] Nome do Cliente</h4>
+          </div>
+          <p id="whatsapp-group-status-hint" style="margin:0 0 8px 0; font-size:0.8rem; color:#666;">
+            O grupo será criado automaticamente no WhatsApp com a imagem oficial SURE ajustada.
+          </p>
+          <div class="participants-tags" style="display:flex; flex-wrap:wrap; gap:6px;">
+            <span class="participant-pill" style="background:#E2E8F0; color:#334155; padding:3px 8px; border-radius:6px; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
+              <i class="fa-solid fa-shield-halved" style="color:#C75233;"></i> Conta Geral (<strong>933 687 879</strong>)
+            </span>
+            <span class="participant-pill" id="pill-consultant" style="background:#DBEAFE; color:#1E40AF; padding:3px 8px; border-radius:6px; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
+              <i class="fa-solid fa-user-tie"></i> Consultor: <strong id="val-consultant-name">Nuno Oliveira</strong> (<span id="val-consultant-phone">912...</span>)
+            </span>
+            <span class="participant-pill" id="pill-client" style="background:#DCFCE7; color:#166534; padding:3px 8px; border-radius:6px; font-size:0.78rem; display:inline-flex; align-items:center; gap:5px;">
+              <i class="fa-solid fa-user"></i> Cliente: <strong id="val-client-name">Cliente</strong> (<span id="val-client-phone">964...</span>)
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editable Phone Numbers Row -->
+      <div class="form-row" style="display:flex; gap:12px; margin-bottom:1.2rem; background:#fff; border:1px dashed var(--border); border-radius:10px; padding:0.9rem;">
+        <div class="form-group" style="flex:1; margin:0;">
+          <label style="font-size:0.8rem; font-weight:700; color:#444; display:flex; align-items:center; gap:5px; margin-bottom:4px;">
+            <i class="fa-solid fa-mobile-screen" style="color:#25D366;"></i> Telemóvel do Cliente (WhatsApp) *
+          </label>
+          <input type="tel" id="whatsapp-input-client-phone" placeholder="Ex: 964 754 073" style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
+        </div>
+        <div class="form-group" style="flex:1; margin:0;">
+          <label style="font-size:0.8rem; font-weight:700; color:#444; display:flex; align-items:center; gap:5px; margin-bottom:4px;">
+            <i class="fa-solid fa-user-tie" style="color:#5B7FA6;"></i> Telemóvel do Consultor Responsável
+          </label>
+          <input type="tel" id="whatsapp-input-consultant-phone" placeholder="Ex: 912 345 678" style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.88rem;">
+        </div>
+      </div>
+
+      <!-- Introduction Message (Cabeçalho) -->
+      <div class="form-group" style="margin-bottom:1.1rem;">
+        <label for="whatsapp-intro-text" style="font-size:0.82rem; font-weight:700; color:var(--castanho); display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span><i class="fa-solid fa-message" style="color:#25D366;"></i> Cabeçalho / Mensagem de Abertura</span>
+          <small style="color:#888;">Adaptação automática singular / casal</small>
+        </label>
+        <textarea id="whatsapp-intro-text" rows="2" style="width:100%; padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.86rem; font-family:inherit; resize:vertical;"></textarea>
+      </div>
+
+      <!-- Selected Properties for Dispatch -->
+      <div class="whatsapp-listings-approval-section" style="margin-bottom:1.1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">
+          <h4 style="margin:0; font-size:0.92rem; color:var(--castanho); display:flex; align-items:center; gap:6px;">
+            <i class="fa-solid fa-list-check" style="color:#C75233;"></i> Imóveis Aprovados para Envio (<span id="whatsapp-selected-count">0</span> selecionados)
+          </h4>
+          <small style="color:#666;">Desmarque os que não pretende enviar agora</small>
+        </div>
+        <div id="whatsapp-approval-listings-grid" class="whatsapp-approval-grid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:10px; max-height:220px; overflow-y:auto; padding:4px;">
+          <!-- Property mini-cards injected dynamically -->
+        </div>
+      </div>
+
+      <!-- Outro / Closing Message (Rodapé) -->
+      <div class="form-group" style="margin-bottom:1.2rem;">
+        <label for="whatsapp-outro-text" style="font-size:0.82rem; font-weight:700; color:var(--castanho); display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span><i class="fa-solid fa-comment-dots" style="color:#5B7FA6;"></i> Rodapé / Pedido de Feedback</span>
+          <small style="color:#888;">Enviado após as fotos dos imóveis</small>
+        </label>
+        <textarea id="whatsapp-outro-text" rows="2" style="width:100%; padding:0.6rem 0.8rem; border:1px solid var(--border); border-radius:var(--r-sm); font-size:0.86rem; font-family:inherit; resize:vertical;"></textarea>
+      </div>
+
+      <!-- Modal Actions / Approval Button -->
+      <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+        <button type="button" class="btn btn-secondary btn-close-modal">Cancelar</button>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <span id="whatsapp-send-loading" class="hidden" style="font-size:0.85rem; color:#15803D;"><i class="fa-solid fa-spinner fa-spin"></i> A criar grupo e enviar opções...</span>
+          <button type="button" id="btn-approve-whatsapp-send" class="btn btn-primary" style="background:#25D366; border-color:#25D366; font-size:0.95rem; padding:10px 18px;">
+            <i class="fa-solid fa-paper-plane"></i> Aprovar & Criar Grupo no WhatsApp
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" class="toast-container"></div>
-<script src="/main.js?v=3.6"></script>
+<script src="/main.js?v=4.0"></script>
 </body>
 </html>

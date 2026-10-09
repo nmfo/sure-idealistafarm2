@@ -24,6 +24,26 @@ function getBot() {
   return botModule;
 }
 
+let whatsappModule = null;
+function getWhatsApp() {
+  if (!whatsappModule) {
+    try {
+      whatsappModule = require('./whatsappService');
+    } catch (e) {
+      console.warn('WhatsApp Baileys indisponível:', e.message);
+      whatsappModule = {
+        getStatus: () => ({ isConnected: false, isConnecting: false }),
+        connect: async () => ({ success: false, error: 'WhatsApp via Baileys requer execução local/VPS.' }),
+        disconnect: async () => ({ success: true }),
+        getGroupPicture: async () => null,
+        createOrGetClientGroup: async (client) => ({ groupId: null, groupTitle: `[SURE] ${client.name}`, inviteLink: client.whatsapp_group_link || '' }),
+        sendApprovedOptions: async () => ({ success: false, error: 'Disparo direto requer WhatsApp conectado.' })
+      };
+    }
+  }
+  return whatsappModule;
+}
+
 process.on('uncaughtException', (err) => {
   console.error('⚠️ [SERVER SAFEGUARD] Exceção capturada:', err.message);
 });
@@ -168,6 +188,226 @@ app.post('/api/todoist/sync-overdue', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Erro na sincronização de atrasos com Todoist:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ── WHATSAPP INTEGRATION & GROUP MANAGEMENT API ──────────────────────────────
+app.get('/api/whatsapp/status', (req, res) => {
+  res.json(getWhatsApp().getStatus());
+});
+
+app.post('/api/whatsapp/connect', async (req, res) => {
+  try {
+    const result = await getWhatsApp().connect();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/disconnect', async (req, res) => {
+  try {
+    const result = await getWhatsApp().disconnect();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+function extractPhoneFromNotes(notes) {
+  if (!notes) return '';
+  const match = String(notes).match(/(?:📞\s*|\+351\s*|\b)(9\d{8}|2\d{8}|3\d{8}|9\d\s*\d{3}\s*\d{4}|9\d{2}\s*\d{3}\s*\d{3}|\+351\s*9\d{8})\b/);
+  return match ? match[1].replace(/\s+/g, '') : '';
+}
+
+app.post('/api/whatsapp/preview-send', async (req, res) => {
+  try {
+    const { client_id, listing_ids, client: clientObj } = req.body;
+    let client = clientObj || clientManager.getClient(client_id);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    if (!client.phone && client.notes) {
+      const extractedPhone = extractPhoneFromNotes(client.notes);
+      if (extractedPhone) {
+        client.phone = extractedPhone;
+        clientManager.saveClient(client);
+      }
+    }
+
+    const consultants = clientManager.getConsultants();
+    const consultant = consultants.find(c => c.id === client.consultant_id) || { name: 'Consultor SURE', phone: '932022674' };
+
+    const allListings = clientManager.getListings(client.id);
+    const selectedListings = Array.isArray(listing_ids) && listing_ids.length > 0
+      ? allListings.filter(l => listing_ids.includes(l.id))
+      : allListings.filter(l => l.status === 'novo').slice(0, 3);
+
+    const groupTitle = `[SURE] ${(client.name || 'Cliente').trim()}`;
+    const name = (client.name || 'Cliente').trim();
+    const isMultiple = /\s+(?:e|&|\/|\+)\s+/i.test(name) || /,\s*/.test(name);
+    const count = selectedListings.length || 1;
+
+    const introGreeting = count === 1
+      ? (isMultiple ? `Olá ${name}, selecionamos esta opção que vos pode interessar:\n\n` : `Olá ${name}, selecionamos esta opção que lhe pode interessar:\n\n`)
+      : (isMultiple ? `Olá ${name}, selecionamos estas ${count} opções que vos podem interessar:\n\n` : `Olá ${name}, selecionamos estas ${count} opções que lhe podem interessar:\n\n`);
+
+    const introClosing = isMultiple
+      ? `Agradecemos sempre o envio de algum feedback para nos irmos adaptando às vossas preferências! 😀`
+      : `Agradecemos sempre o envio de algum feedback para nos irmos adaptando às suas preferências! 😀`;
+
+    const defaultIntro = `${introGreeting.trim()}\n\n${introClosing.trim()}`;
+
+    let groupPictureUrl = '/assets/sure_group_avatar.jpg';
+    if (client.whatsapp_group_id && getWhatsApp().isConnected) {
+      try {
+        const fetched = await getWhatsApp().getGroupPicture(client.whatsapp_group_id);
+        if (fetched) groupPictureUrl = fetched;
+      } catch (e) {}
+    }
+
+    res.json({
+      success: true,
+      client: {
+        id: client.id,
+        name: client.name,
+        phone: client.phone || '',
+        whatsapp_group_id: client.whatsapp_group_id || null,
+        whatsapp_group_link: client.whatsapp_group_link || null
+      },
+      consultant: {
+        id: consultant.id,
+        name: consultant.name,
+        phone: consultant.phone || ''
+      },
+      general: {
+        number: getWhatsApp().generalNumber || '933 687 879',
+        jid: getWhatsApp().generalJid || '351933687879@s.whatsapp.net'
+      },
+      group_title: groupTitle,
+      group_picture_url: groupPictureUrl,
+      has_existing_group: !!client.whatsapp_group_id,
+      existing_group_link: client.whatsapp_group_link || null,
+      suggested_intro: defaultIntro,
+      listings: selectedListings
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/send-approved', async (req, res) => {
+  try {
+    const { client_id, listing_ids, intro_message, client_phone, consultant_phone, client: clientObj } = req.body;
+    let client = clientObj || clientManager.getClient(client_id);
+    if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
+
+    if (client_phone && client_phone !== client.phone) {
+      client.phone = client_phone;
+      client = clientManager.saveClient(client);
+    }
+
+    const consultants = clientManager.getConsultants();
+    const consultant = consultants.find(c => c.id === client.consultant_id) || { name: 'Consultor SURE', phone: '' };
+
+    if (consultant_phone && consultant && consultant_phone !== consultant.phone) {
+      consultant.phone = consultant_phone;
+      clientManager.saveConsultant(consultant);
+    }
+
+    const allListings = clientManager.getListings(client.id);
+    const targetListings = Array.isArray(listing_ids) && listing_ids.length > 0
+      ? allListings.filter(l => listing_ids.includes(l.id))
+      : allListings.filter(l => l.status === 'novo').slice(0, 3);
+
+    if (targetListings.length === 0) {
+      return res.status(400).json({ error: 'Nenhum imóvel selecionado para envio.' });
+    }
+
+    // 1. Criar ou Obter Grupo WhatsApp
+    const groupResult = await getWhatsApp().createOrGetClientGroup(
+      client,
+      consultant,
+      client_phone || client.phone,
+      consultant_phone || (consultant && consultant.phone)
+    );
+
+    // Salvar ID e Link do grupo no cliente
+    if (groupResult && groupResult.groupId) {
+      client = clientManager.updateClientWhatsAppGroup(client.id, groupResult.groupId, groupResult.inviteLink);
+    }
+
+    // 2. Enviar Opções Aprovadas para o Grupo
+    const sendResult = await getWhatsApp().sendApprovedOptions(
+      groupResult.groupId,
+      client,
+      targetListings,
+      intro_message,
+      consultant
+    );
+
+    // 3. Atualizar Estado dos Imóveis para "enviado"
+    targetListings.forEach(l => {
+      clientManager.updateListingStatus(l.id, client.id, 'enviado');
+    });
+    clientManager.markClientSent(client.id);
+
+    // 4. Sincronizações automáticas (Drive, Zoho Notes POP, Todoist)
+    let driveSync = null;
+    let zohoNoteSync = null;
+    let todoistSync = null;
+
+    try {
+      if (!googleDriveService.initialized) await googleDriveService.initAuth();
+      if (googleDriveService.initialized) {
+        driveSync = await googleDriveService.recordSentProperties(client, targetListings);
+      }
+    } catch (dErr) {
+      console.warn('Aviso sincronização Drive no WhatsApp send:', dErr.message);
+    }
+
+    if (client.zoho_id && zohoService.isConfigured()) {
+      try {
+        const assistants = clientManager.getAssistants();
+        const assistant = assistants.find(as => as.id === client.assistant_id);
+        const authorName = (assistant && assistant.name) || (consultant && consultant.name) || 'Equipa SURE';
+
+        const popNote = zohoService.formatPopNote({
+          authorName,
+          action: 'Envio de Imóveis (WhatsApp Grupo)',
+          client,
+          consultantName: consultant ? consultant.name : '',
+          assistantName: assistant ? assistant.name : '',
+          listings: targetListings,
+          channel: 'WhatsApp Grupo ' + (groupResult.groupTitle || `[SURE] ${client.name}`)
+        });
+
+        zohoNoteSync = await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
+      } catch (zErr) {
+        console.warn('Aviso sincronização Zoho Note no WhatsApp send:', zErr.message);
+      }
+    }
+
+    if (todoistService.isConfigured()) {
+      try {
+        todoistSync = await todoistService.createSentFeedbackTask(client, targetListings, consultant);
+      } catch (tErr) {
+        console.warn('Aviso sincronização Todoist no WhatsApp send:', tErr.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      group: groupResult,
+      sendResult,
+      listings_count: targetListings.length,
+      driveSync,
+      zohoNoteSync,
+      todoistSync,
+      message: `🎉 Grupo "${groupResult.groupTitle}" pronto e ${targetListings.length} opções enviadas com sucesso!`
+    });
+  } catch (err) {
+    console.error('Erro no envio aprovado de WhatsApp:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

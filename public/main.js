@@ -4084,6 +4084,487 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── WHATSAPP INTEGRATION & APPROVAL FLOW ────────────────────────────────────
+  const btnOpenWhatsappModal = document.getElementById('btn-open-whatsapp-modal');
+  const modalWhatsappConnect = document.getElementById('modal-whatsapp-connect');
+  const whatsappStatusCard = document.getElementById('whatsapp-status-card');
+  const whatsappStatusIcon = document.getElementById('whatsapp-status-icon');
+  const whatsappStatusTitle = document.getElementById('whatsapp-status-title');
+  const whatsappStatusDetails = document.getElementById('whatsapp-status-details');
+  const whatsappQrBox = document.getElementById('whatsapp-qr-box');
+  const whatsappQrImg = document.getElementById('whatsapp-qr-img');
+  const btnRefreshWhatsappQr = document.getElementById('btn-refresh-whatsapp-qr');
+  const btnReconnectWhatsapp = document.getElementById('btn-reconnect-whatsapp');
+  const btnDisconnectWhatsapp = document.getElementById('btn-disconnect-whatsapp');
+
+  // Approval Modal Elements
+  const modalWhatsappApproval = document.getElementById('modal-whatsapp-approval');
+  const btnOpenWhatsappApproval = document.getElementById('btn-open-whatsapp-approval');
+  const btnWhatsappTop3 = document.getElementById('btn-whatsapp-top3');
+  const btnWhatsappSelection = document.getElementById('btn-whatsapp-selection');
+  const badgeGroupStatus = document.getElementById('badge-group-status');
+  const whatsappPreviewGroupTitle = document.getElementById('whatsapp-preview-group-title');
+  const whatsappGroupStatusHint = document.getElementById('whatsapp-group-status-hint');
+  const valConsultantName = document.getElementById('val-consultant-name');
+  const valConsultantPhone = document.getElementById('val-consultant-phone');
+  const valClientName = document.getElementById('val-client-name');
+  const valClientPhone = document.getElementById('val-client-phone');
+  const whatsappInputClientPhone = document.getElementById('whatsapp-input-client-phone');
+  const whatsappInputConsultantPhone = document.getElementById('whatsapp-input-consultant-phone');
+  const whatsappIntroText = document.getElementById('whatsapp-intro-text');
+  const whatsappOutroText = document.getElementById('whatsapp-outro-text');
+  const whatsappApprovalListingsGrid = document.getElementById('whatsapp-approval-listings-grid');
+  const whatsappSelectedCount = document.getElementById('whatsapp-selected-count');
+  const btnApproveWhatsappSend = document.getElementById('btn-approve-whatsapp-send');
+  const whatsappSendLoading = document.getElementById('whatsapp-send-loading');
+
+  let whatsappPollInterval = null;
+  let currentApprovalClient = null;
+  let currentApprovalListings = [];
+  let hasSyncedWhatsAppGroups = false;
+
+  async function checkWhatsAppStatus() {
+    try {
+      const res = await fetch('/api/whatsapp/status');
+      const status = await res.json();
+      updateWhatsAppUI(status);
+
+      if (status && status.isConnected && !hasSyncedWhatsAppGroups) {
+        hasSyncedWhatsAppGroups = true;
+        fetch('/api/whatsapp/sync-groups', { method: 'POST' })
+          .then(r => r.json())
+          .then(data => {
+            if (data && data.success && data.linked_count > 0) {
+              loadClients();
+            }
+          })
+          .catch(() => {});
+      }
+
+      return status;
+    } catch (e) {
+      console.warn('Erro ao verificar WhatsApp:', e.message);
+    }
+  }
+
+  function updateWhatsAppUI(status) {
+    if (!status) return;
+
+    if (btnOpenWhatsappModal) {
+      if (status.isConnected) {
+        btnOpenWhatsappModal.style.color = '#22C55E';
+        btnOpenWhatsappModal.title = `WhatsApp Conectado (${status.userNumber || '933 687 879'})`;
+      } else if (status.isConnecting) {
+        btnOpenWhatsappModal.style.color = '#EAB308';
+        btnOpenWhatsappModal.title = 'WhatsApp: A aguardar leitura de QR Code...';
+      } else {
+        btnOpenWhatsappModal.style.color = '#94A3B8';
+        btnOpenWhatsappModal.title = 'WhatsApp Desconectado (Clique para Conectar)';
+      }
+    }
+
+    if (modalWhatsappConnect && !modalWhatsappConnect.classList.contains('hidden')) {
+      if (status.isConnected) {
+        if (whatsappStatusCard) {
+          whatsappStatusCard.style.display = 'block';
+          whatsappStatusCard.classList.remove('hidden');
+          whatsappStatusCard.style.background = '#F0FDF4';
+          whatsappStatusCard.style.borderColor = '#BBF7D0';
+        }
+        if (whatsappStatusIcon) {
+          whatsappStatusIcon.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#22C55E;"></i>';
+        }
+        if (whatsappStatusTitle) {
+          whatsappStatusTitle.textContent = 'WhatsApp Conectado e Pronto!';
+          whatsappStatusTitle.style.color = '#15803D';
+        }
+        if (whatsappStatusDetails) {
+          whatsappStatusDetails.innerHTML = `Sessão ativa no número: <strong>+${status.userNumber || '351 933 687 879'}</strong> (Conta Geral SURE)<br><small style="color:#15803D;margin-top:6px;display:block;">Já pode fechar esta janela e enviar opções nos clientes.</small>`;
+        }
+        if (whatsappQrBox) {
+          whatsappQrBox.style.display = 'none';
+          whatsappQrBox.classList.add('hidden');
+        }
+        if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'inline-flex';
+        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'none';
+      } else if (status.qrCodeDataUrl) {
+        if (whatsappStatusCard) {
+          whatsappStatusCard.style.display = 'none';
+          whatsappStatusCard.classList.add('hidden');
+        }
+        if (whatsappQrBox) {
+          whatsappQrBox.style.display = 'block';
+          whatsappQrBox.classList.remove('hidden');
+          if (whatsappQrImg) whatsappQrImg.src = status.qrCodeDataUrl;
+        }
+        if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'none';
+        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'none';
+      } else {
+        if (whatsappStatusCard) {
+          whatsappStatusCard.style.display = 'block';
+          whatsappStatusCard.classList.remove('hidden');
+          whatsappStatusCard.style.background = '#FEF2F2';
+          whatsappStatusCard.style.borderColor = '#FECACA';
+        }
+        if (whatsappStatusIcon) {
+          whatsappStatusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:#EF4444;"></i>';
+        }
+        if (whatsappStatusTitle) {
+          whatsappStatusTitle.textContent = 'WhatsApp Desconectado';
+          whatsappStatusTitle.style.color = '#B91C1C';
+        }
+        if (whatsappStatusDetails) {
+          whatsappStatusDetails.innerHTML = 'Clique no botão abaixo para gerar o QR Code de conexão.';
+        }
+        if (whatsappQrBox) {
+          whatsappQrBox.style.display = 'none';
+          whatsappQrBox.classList.add('hidden');
+        }
+        if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'none';
+        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'inline-flex';
+      }
+    }
+  }
+
+  if (btnOpenWhatsappModal) {
+    btnOpenWhatsappModal.addEventListener('click', async () => {
+      if (modalWhatsappConnect) modalWhatsappConnect.classList.remove('hidden');
+      const status = await checkWhatsAppStatus();
+
+      if (status && !status.isConnected && !status.qrCodeDataUrl) {
+        if (btnReconnectWhatsapp) btnReconnectWhatsapp.click();
+      }
+
+      if (whatsappPollInterval) clearInterval(whatsappPollInterval);
+      whatsappPollInterval = setInterval(checkWhatsAppStatus, 2500);
+    });
+  }
+
+  if (btnRefreshWhatsappQr || btnReconnectWhatsapp) {
+    const handleConnect = async () => {
+      try {
+        const curStatus = await checkWhatsAppStatus();
+        if (curStatus && curStatus.isConnected) {
+          showToast('WhatsApp já está conectado com sucesso!', 'info');
+          return;
+        }
+
+        showToast('A gerar novo QR Code WhatsApp...', 'info');
+        const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          updateWhatsAppUI(data.status);
+        } else {
+          showToast(`Erro: ${data.error}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Erro de conexão: ${err.message}`, 'error');
+      }
+    };
+    if (btnRefreshWhatsappQr) btnRefreshWhatsappQr.addEventListener('click', handleConnect);
+    if (btnReconnectWhatsapp) btnReconnectWhatsapp.addEventListener('click', handleConnect);
+  }
+
+  if (btnDisconnectWhatsapp) {
+    btnDisconnectWhatsapp.addEventListener('click', async () => {
+      if (!confirm('Deseja realmente desconectar e ler um novo QR Code?')) return;
+      try {
+        showToast('A desconectar sessão...', 'info');
+        const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          showToast('Sessão desconectada. A gerar novo QR Code...');
+          await checkWhatsAppStatus();
+          setTimeout(async () => {
+            const cRes = await fetch('/api/whatsapp/connect', { method: 'POST' });
+            const cData = await cRes.json();
+            if (cData.status) updateWhatsAppUI(cData.status);
+          }, 600);
+        }
+      } catch (err) {
+        showToast(`Erro ao desconectar: ${err.message}`, 'error');
+      }
+    });
+  }
+
+  // ── APPROVAL & DISPATCH MODAL HANDLERS ───────────────────────────────────
+  async function openWhatsAppApprovalModal(targetClient, specificListingIds = null) {
+    if (!targetClient) {
+      showToast('Por favor selecione um cliente primeiro.', 'warning');
+      return;
+    }
+
+    currentApprovalClient = targetClient;
+
+    const waStatus = await checkWhatsAppStatus();
+    if (!waStatus || !waStatus.isConnected) {
+      if (confirm('O WhatsApp da Conta Geral (933 687 879) ainda não está conectado. Deseja abrir a janela de conexão com QR Code agora?')) {
+        if (modalWhatsappConnect) modalWhatsappConnect.classList.remove('hidden');
+        if (btnReconnectWhatsapp) btnReconnectWhatsapp.click();
+      }
+      return;
+    }
+
+    try {
+      showToast('A carregar prévia do grupo e opções...', 'info');
+      const res = await fetch('/api/whatsapp/preview-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: targetClient.id,
+          listing_ids: specificListingIds,
+          client: targetClient
+        })
+      });
+      const preview = await res.json();
+      if (!preview.success) {
+        showToast(`Erro: ${preview.error}`, 'error');
+        return;
+      }
+
+      currentApprovalListings = preview.listings || [];
+
+      // Update Group Details
+      if (whatsappPreviewGroupTitle) whatsappPreviewGroupTitle.textContent = preview.group_title;
+      const groupImg = document.getElementById('whatsapp-preview-group-avatar');
+      if (groupImg) {
+        groupImg.src = preview.group_picture_url || '/assets/sure_group_avatar.jpg';
+      }
+      if (badgeGroupStatus) {
+        if (preview.has_existing_group) {
+          badgeGroupStatus.textContent = 'Grupo Já Existente';
+          badgeGroupStatus.style.background = '#0284C7';
+        } else {
+          badgeGroupStatus.textContent = 'Novo Grupo [SURE]';
+          badgeGroupStatus.style.background = '#25D366';
+        }
+      }
+      if (whatsappGroupStatusHint) {
+        whatsappGroupStatusHint.textContent = preview.has_existing_group
+          ? 'As opções serão enviadas para o grupo WhatsApp já ativo deste cliente.'
+          : 'Será criado automaticamente um novo grupo com a foto de perfil SURE e os 3 participantes.';
+      }
+
+      // Fill participant values
+      if (valConsultantName) valConsultantName.textContent = preview.consultant.name || 'Consultor';
+      if (valConsultantPhone) valConsultantPhone.textContent = preview.consultant.phone || '932022674';
+      if (valClientName) valClientName.textContent = preview.client.name || 'Cliente';
+      if (valClientPhone) valClientPhone.textContent = preview.client.phone || 'Sem número';
+
+      if (whatsappInputClientPhone) whatsappInputClientPhone.value = preview.client.phone || '';
+      if (whatsappInputConsultantPhone) whatsappInputConsultantPhone.value = preview.consultant.phone || '932022674';
+      if (whatsappIntroText) whatsappIntroText.value = preview.suggested_intro || formatIntroMessage(targetClient, currentApprovalListings.length).trim();
+      if (whatsappOutroText) whatsappOutroText.value = preview.suggested_outro || formatOutroMessage(targetClient).trim();
+
+      // Render Listings mini-cards with toggle checkboxes
+      renderApprovalListingsGrid(currentApprovalListings);
+
+      if (modalWhatsappApproval) modalWhatsappApproval.classList.remove('hidden');
+    } catch (err) {
+      showToast(`Erro ao abrir painel de aprovação: ${err.message}`, 'error');
+    }
+  }
+
+  function renderApprovalListingsGrid(items) {
+    if (!whatsappApprovalListingsGrid) return;
+    whatsappApprovalListingsGrid.innerHTML = '';
+
+    if (!items || items.length === 0) {
+      whatsappApprovalListingsGrid.innerHTML = `
+        <div style="grid-column:1/-1; text-align:center; padding:1.5rem; color:#888; background:#FAF8F5; border-radius:8px;">
+          <i class="fa-solid fa-inbox" style="font-size:1.8rem; margin-bottom:6px; color:#C75233;"></i>
+          <p style="margin:0;">Nenhum imóvel disponível para envio. Adicione ou pesquise novos imóveis para este cliente.</p>
+        </div>
+      `;
+      if (whatsappSelectedCount) whatsappSelectedCount.textContent = '0';
+      return;
+    }
+
+    items.forEach((l, idx) => {
+      const card = document.createElement('div');
+      card.className = 'whatsapp-approval-card';
+      card.style.cssText = 'display:flex; gap:8px; align-items:center; background:#fff; border:1px solid #E2E8F0; border-radius:8px; padding:8px; position:relative;';
+
+      const validPhotos = getValidListingPhotos(l);
+      const photoUrl = validPhotos[0] || '';
+
+      card.innerHTML = `
+        <input type="checkbox" class="wa-item-checkbox" data-id="${l.id}" checked style="width:18px; height:18px; cursor:pointer; accent-color:#25D366; flex-shrink:0;">
+        ${photoUrl ? `<img src="${photoUrl}" alt="Foto" referrerpolicy="no-referrer" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" style="width:64px; height:50px; object-fit:cover; border-radius:6px; flex-shrink:0; background:#f0ece8;">` : ''}
+        <div class="wa-fallback-icon" style="width:64px; height:50px; border-radius:6px; background:#EDE3D8; color:var(--terracota); display:${photoUrl ? 'none' : 'flex'}; align-items:center; justify-content:center; flex-shrink:0; font-size:1.1rem;"><i class="fa-solid fa-house"></i></div>
+        <div style="flex:1; min-width:0;">
+          <div style="font-weight:700; font-size:0.82rem; color:#1E293B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${l.title || ''}">
+            ${idx + 1}. ${l.title || 'Imóvel'}
+          </div>
+          <div style="font-size:0.8rem; color:#C75233; font-weight:700;">
+            ${l.price || 'Consultar €'}
+          </div>
+          <div style="font-size:0.75rem; color:#64748B; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            <i class="fa-solid fa-location-dot"></i> ${l.location || 'Localização'}
+          </div>
+        </div>
+      `;
+
+      whatsappApprovalListingsGrid.appendChild(card);
+    });
+
+    updateApprovalSelectedCount();
+
+    whatsappApprovalListingsGrid.querySelectorAll('.wa-item-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        updateApprovalSelectedCount();
+        const checked = whatsappApprovalListingsGrid.querySelectorAll('.wa-item-checkbox:checked');
+        if (currentApprovalClient && whatsappIntroText) {
+          whatsappIntroText.value = formatIntroMessage(currentApprovalClient, checked.length).trim();
+        }
+      });
+    });
+  }
+
+  function updateApprovalSelectedCount() {
+    const checked = whatsappApprovalListingsGrid ? whatsappApprovalListingsGrid.querySelectorAll('.wa-item-checkbox:checked') : [];
+    const count = checked.length;
+    if (whatsappSelectedCount) whatsappSelectedCount.textContent = count;
+    if (btnApproveWhatsappSend) {
+      btnApproveWhatsappSend.disabled = count === 0;
+      if (count === 0) {
+        btnApproveWhatsappSend.innerHTML = '<i class="fa-solid fa-ban"></i> Selecione pelo menos 1 imóvel';
+      } else {
+        btnApproveWhatsappSend.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Aprovar & Criar Grupo no WhatsApp (${count} opções)`;
+      }
+    }
+  }
+
+  if (btnApproveWhatsappSend) {
+    btnApproveWhatsappSend.addEventListener('click', async () => {
+      if (!currentApprovalClient) return;
+
+      const checkedCheckboxes = whatsappApprovalListingsGrid.querySelectorAll('.wa-item-checkbox:checked');
+      const checkedIds = Array.from(checkedCheckboxes).map(cb => cb.dataset.id);
+
+      if (checkedIds.length === 0) {
+        showToast('Selecione pelo menos um imóvel para envio.', 'warning');
+        return;
+      }
+
+      const clientPhone = whatsappInputClientPhone ? whatsappInputClientPhone.value.trim() : '';
+      const consultantPhone = whatsappInputConsultantPhone ? whatsappInputConsultantPhone.value.trim() : '';
+      const introMessage = whatsappIntroText ? whatsappIntroText.value.trim() : '';
+      const outroMessage = whatsappOutroText ? whatsappOutroText.value.trim() : '';
+
+      if (!clientPhone) {
+        showToast('Por favor introduza o número de telemóvel do cliente.', 'error');
+        if (whatsappInputClientPhone) whatsappInputClientPhone.focus();
+        return;
+      }
+
+      btnApproveWhatsappSend.disabled = true;
+      if (whatsappSendLoading) whatsappSendLoading.classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/whatsapp/send-approved', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_id: currentApprovalClient.id,
+            listing_ids: checkedIds,
+            intro_message: introMessage,
+            outro_message: outroMessage,
+            client_phone: clientPhone,
+            consultant_phone: consultantPhone,
+            client: currentApprovalClient
+          })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+          showToast(`🎉 ${data.message || 'Grupo criado e opções enviadas com sucesso no WhatsApp!'}`);
+
+          if (modalWhatsappApproval) modalWhatsappApproval.classList.add('hidden');
+
+          // Update local client
+          currentApprovalClient.phone = clientPhone;
+          if (data.group && data.group.groupId) {
+            currentApprovalClient.whatsapp_group_id = data.group.groupId;
+            currentApprovalClient.whatsapp_group_link = data.group.inviteLink;
+          }
+          currentApprovalClient.last_sent_at = new Date().toISOString();
+
+          // Mark sent listings in memory
+          if (Array.isArray(checkedIds) && Array.isArray(listings)) {
+            listings.forEach(l => {
+              if (checkedIds.includes(l.id)) {
+                l.status = 'enviado';
+              }
+            });
+          }
+          if (typeof selectedListingIds !== 'undefined' && selectedListingIds) {
+            selectedListingIds.clear();
+            if (typeof updateSelectionDock === 'function') updateSelectionDock();
+          }
+
+          // Refresh listings view
+          if (currentClient && currentClient.id === currentApprovalClient.id) {
+            loadListings(currentClient.id);
+          }
+          loadClients();
+        } else {
+          showToast(`❌ Erro no envio WhatsApp: ${data.error || 'Falha ao processar'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Erro de rede: ${err.message}`, 'error');
+      } finally {
+        btnApproveWhatsappSend.disabled = false;
+        if (whatsappSendLoading) whatsappSendLoading.classList.add('hidden');
+        updateApprovalSelectedCount();
+      }
+    });
+  }
+
+  if (btnOpenWhatsappApproval) {
+    btnOpenWhatsappApproval.addEventListener('click', () => {
+      if (!currentClient) {
+        showToast('Selecione primeiro um cliente para enviar opções.', 'warning');
+        return;
+      }
+      openWhatsAppApprovalModal(currentClient);
+    });
+  }
+
+  if (btnWhatsappTop3) {
+    btnWhatsappTop3.addEventListener('click', () => {
+      if (!currentClient) {
+        showToast('Selecione um cliente primeiro.', 'warning');
+        return;
+      }
+      const top3Items = listings.filter(l => l.status === 'novo').slice(0, 3);
+      if (top3Items.length === 0) {
+        showToast('Não existem imóveis novos no Top 3 para enviar.', 'info');
+        return;
+      }
+      openWhatsAppApprovalModal(currentClient, top3Items.map(l => l.id));
+    });
+  }
+
+  if (btnWhatsappSelection) {
+    btnWhatsappSelection.addEventListener('click', () => {
+      if (!currentClient) {
+        showToast('Selecione um cliente primeiro.', 'warning');
+        return;
+      }
+      if (selectedListingIds.size === 0) {
+        showToast('Nenhum imóvel selecionado.', 'warning');
+        return;
+      }
+      openWhatsAppApprovalModal(currentClient, Array.from(selectedListingIds));
+    });
+  }
+
+  // Check WhatsApp status on app launch & keep live
+  checkWhatsAppStatus();
+  setInterval(checkWhatsAppStatus, 5000);
+
   // Load visits on application startup
   loadVisits();
   checkTodoistStatus();

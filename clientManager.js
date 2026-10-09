@@ -381,6 +381,18 @@ class ClientManager {
     return client;
   }
 
+  updateClientWhatsAppGroup(clientId, groupId, groupLink) {
+    let clients = this.getClients();
+    const client = clients.find(c => c.id === clientId);
+    if (!client) return false;
+
+    client.whatsapp_group_id = groupId || client.whatsapp_group_id || null;
+    if (groupLink) client.whatsapp_group_link = groupLink;
+    client.updated_at = new Date().toISOString();
+    syncWrite(CLIENTS_FILE, clients);
+    return client;
+  }
+
   deleteClient(clientId) {
     let clients = this.getClients();
     clients = clients.filter(c => c.id !== clientId);
