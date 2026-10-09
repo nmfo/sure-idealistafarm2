@@ -281,8 +281,8 @@ app.post('/api/whatsapp/preview-send', async (req, res) => {
         phone: consultant.phone || ''
       },
       general: {
-        number: getWhatsApp().generalNumber || '933 687 879',
-        jid: getWhatsApp().generalJid || '351933687879@s.whatsapp.net'
+        number: getWhatsApp().generalNumber || '932 022 674',
+        jid: getWhatsApp().generalJid || '351932022674@s.whatsapp.net'
       },
       group_title: groupTitle,
       group_picture_url: groupPictureUrl,
@@ -298,7 +298,7 @@ app.post('/api/whatsapp/preview-send', async (req, res) => {
 
 app.post('/api/whatsapp/send-approved', async (req, res) => {
   try {
-    const { client_id, listing_ids, intro_message, client_phone, consultant_phone, client: clientObj } = req.body;
+    const { client_id, listing_ids, intro_message, outro_message, client_phone, consultant_phone, client: clientObj } = req.body;
     let client = clientObj || clientManager.getClient(client_id);
     if (!client) return res.status(404).json({ error: 'Cliente não encontrado' });
 
@@ -324,35 +324,46 @@ app.post('/api/whatsapp/send-approved', async (req, res) => {
       return res.status(400).json({ error: 'Nenhum imóvel selecionado para envio.' });
     }
 
-    // 1. Criar ou Obter Grupo WhatsApp
-    const groupResult = await getWhatsApp().createOrGetClientGroup(
-      client,
-      consultant,
-      client_phone || client.phone,
-      consultant_phone || (consultant && consultant.phone)
-    );
+    let groupResult = null;
+    let sendResult = null;
+    let isFallback = false;
 
-    // Salvar ID e Link do grupo no cliente
-    if (groupResult && groupResult.groupId) {
-      client = clientManager.updateClientWhatsAppGroup(client.id, groupResult.groupId, groupResult.inviteLink);
+    // Se o Baileys estiver conectado, faz o fluxo direto de socket
+    if (getWhatsApp().isConnected) {
+      try {
+        groupResult = await getWhatsApp().createOrGetClientGroup(
+          client,
+          consultant,
+          client_phone || client.phone,
+          consultant_phone || (consultant && consultant.phone)
+        );
+
+        if (groupResult && groupResult.groupId) {
+          client = clientManager.updateClientWhatsAppGroup(client.id, groupResult.groupId, groupResult.inviteLink);
+        }
+
+        sendResult = await getWhatsApp().sendApprovedOptions(
+          groupResult.groupId,
+          client,
+          targetListings,
+          intro_message,
+          consultant
+        );
+      } catch (waErr) {
+        console.warn('Aviso Baileys socket send, usando fallback Web:', waErr.message);
+        isFallback = true;
+      }
+    } else {
+      isFallback = true;
     }
 
-    // 2. Enviar Opções Aprovadas para o Grupo
-    const sendResult = await getWhatsApp().sendApprovedOptions(
-      groupResult.groupId,
-      client,
-      targetListings,
-      intro_message,
-      consultant
-    );
-
-    // 3. Atualizar Estado dos Imóveis para "enviado"
+    // Atualizar Estado dos Imóveis para "enviado"
     targetListings.forEach(l => {
       clientManager.updateListingStatus(l.id, client.id, 'enviado');
     });
     clientManager.markClientSent(client.id);
 
-    // 4. Sincronizações automáticas (Drive, Zoho Notes POP, Todoist)
+    // Sincronizações automáticas (Drive, Zoho Notes POP, Todoist)
     let driveSync = null;
     let zohoNoteSync = null;
     let todoistSync = null;
@@ -374,12 +385,12 @@ app.post('/api/whatsapp/send-approved', async (req, res) => {
 
         const popNote = zohoService.formatPopNote({
           authorName,
-          action: 'Envio de Imóveis (WhatsApp Grupo)',
+          action: 'Envio de Imóveis (WhatsApp)',
           client,
           consultantName: consultant ? consultant.name : '',
           assistantName: assistant ? assistant.name : '',
           listings: targetListings,
-          channel: 'WhatsApp Grupo ' + (groupResult.groupTitle || `[SURE] ${client.name}`)
+          channel: client.whatsapp_group_link ? 'WhatsApp Grupo' : 'WhatsApp'
         });
 
         zohoNoteSync = await zohoService.addDealNote(client.zoho_id, popNote.title, popNote.content);
@@ -396,15 +407,38 @@ app.post('/api/whatsapp/send-approved', async (req, res) => {
       }
     }
 
+    // Gerar Mensagem Completa e Link WhatsApp Web
+    const rawDigits = String(client_phone || client.phone || '').replace(/\D/g, '');
+    const cleanPhone = rawDigits.length === 9 ? '351' + rawDigits : rawDigits;
+
+    const itemsText = targetListings.map((l, i) => {
+      const idx = i + 1;
+      const specs = (l.specs && l.specs.length > 0) ? `✨ ${l.specs.slice(0, 4).join(', ')}\n` : '';
+      return `🏡 *Opção ${idx}* — *${l.title || 'Imóvel'}*\n💰 *Preço:* ${l.price || 'Consultar €'}\n📍 *Localização:* ${l.location || client.location || ''}\n${specs}🔗 *Ver Anúncio:* ${l.link || ''}`;
+    }).join('\n\n');
+
+    const fullMessage = [
+      (intro_message || `Olá ${client.name}! Veja as opções selecionadas:`).trim(),
+      itemsText,
+      (outro_message || `Agradecemos o vosso feedback para ajustarmos as preferências! 😀`).trim()
+    ].filter(Boolean).join('\n\n');
+
+    const whatsappWebUrl = client.whatsapp_group_link || (cleanPhone ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(fullMessage)}` : `https://web.whatsapp.com/`);
+
     res.json({
       success: true,
+      is_fallback: isFallback,
+      whatsapp_web_url: whatsappWebUrl,
+      full_message: fullMessage,
       group: groupResult,
       sendResult,
       listings_count: targetListings.length,
       driveSync,
       zohoNoteSync,
       todoistSync,
-      message: `🎉 Grupo "${groupResult.groupTitle}" pronto e ${targetListings.length} opções enviadas com sucesso!`
+      message: isFallback
+        ? `✅ ${targetListings.length} opções marcadas como enviadas e sincronizadas na Drive, Zoho e Todoist!`
+        : `🎉 Grupo "${groupResult ? groupResult.groupTitle : ''}" pronto e ${targetListings.length} opções enviadas com sucesso!`
     });
   } catch (err) {
     console.error('Erro no envio aprovado de WhatsApp:', err);

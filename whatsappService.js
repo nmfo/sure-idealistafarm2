@@ -1,8 +1,18 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const qrcode = require('qrcode');
-const pino = require('pino');
+let qrcode, pino;
+try {
+  qrcode = require('qrcode');
+} catch (e) {
+  console.warn('⚠️ qrcode não carregado:', e.message);
+}
+
+try {
+  pino = require('pino');
+} catch (e) {
+  console.warn('⚠️ pino não carregado:', e.message);
+}
 
 // Import Baileys conditionally
 let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion;

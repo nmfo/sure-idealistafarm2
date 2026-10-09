@@ -4143,7 +4143,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       return status;
     } catch (e) {
-      console.warn('Erro ao verificar WhatsApp:', e.message);
+      console.warn('Aviso verificação WhatsApp:', e.message);
     }
   }
 
@@ -4159,7 +4159,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnOpenWhatsappModal.title = 'WhatsApp: A aguardar leitura de QR Code...';
       } else {
         btnOpenWhatsappModal.style.color = '#94A3B8';
-        btnOpenWhatsappModal.title = 'WhatsApp Desconectado (Clique para Conectar)';
+        btnOpenWhatsappModal.title = 'WhatsApp (Clique para Conectar)';
       }
     }
 
@@ -4255,10 +4255,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.success) {
           updateWhatsAppUI(data.status);
         } else {
-          showToast(`Erro: ${data.error}`, 'error');
+          showToast(`Aviso: ${data.error || 'A aguardar inicialização do serviço'}`, 'info');
         }
       } catch (err) {
-        showToast(`Erro de conexão: ${err.message}`, 'error');
+        showToast(`Aviso de conexão: ${err.message}`, 'info');
       }
     };
     if (btnRefreshWhatsappQr) btnRefreshWhatsappQr.addEventListener('click', handleConnect);
@@ -4295,15 +4295,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     currentApprovalClient = targetClient;
-
-    const waStatus = await checkWhatsAppStatus();
-    if (!waStatus || !waStatus.isConnected) {
-      if (confirm('O WhatsApp da Conta Geral (933 687 879) ainda não está conectado. Deseja abrir a janela de conexão com QR Code agora?')) {
-        if (modalWhatsappConnect) modalWhatsappConnect.classList.remove('hidden');
-        if (btnReconnectWhatsapp) btnReconnectWhatsapp.click();
-      }
-      return;
-    }
+    checkWhatsAppStatus();
 
     try {
       showToast('A carregar prévia do grupo e opções...', 'info');
@@ -4335,19 +4327,19 @@ document.addEventListener('DOMContentLoaded', () => {
           badgeGroupStatus.textContent = 'Grupo Já Existente';
           badgeGroupStatus.style.background = '#0284C7';
         } else {
-          badgeGroupStatus.textContent = 'Novo Grupo [SURE]';
+          badgeGroupStatus.textContent = 'Grupo [SURE]';
           badgeGroupStatus.style.background = '#25D366';
         }
       }
       if (whatsappGroupStatusHint) {
         whatsappGroupStatusHint.textContent = preview.has_existing_group
           ? 'As opções serão enviadas para o grupo WhatsApp já ativo deste cliente.'
-          : 'Será criado automaticamente um novo grupo com a foto de perfil SURE e os 3 participantes.';
+          : 'Será criado/aberto o grupo WhatsApp oficial com a imagem SURE e os 3 participantes.';
       }
 
       // Fill participant values
       if (valConsultantName) valConsultantName.textContent = preview.consultant.name || 'Consultor';
-      if (valConsultantPhone) valConsultantPhone.textContent = preview.consultant.phone || '932022674';
+      if (valConsultantPhone) valConsultantPhone.textContent = preview.consultant.phone || '932 022 674';
       if (valClientName) valClientName.textContent = preview.client.name || 'Cliente';
       if (valClientPhone) valClientPhone.textContent = preview.client.phone || 'Sem número';
 
@@ -4361,7 +4353,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (modalWhatsappApproval) modalWhatsappApproval.classList.remove('hidden');
     } catch (err) {
-      showToast(`Erro ao abrir painel de aprovação: ${err.message}`, 'error');
+      showToast(`Erro ao abrir painel de envio: ${err.message}`, 'error');
     }
   }
 
@@ -4430,7 +4422,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (count === 0) {
         btnApproveWhatsappSend.innerHTML = '<i class="fa-solid fa-ban"></i> Selecione pelo menos 1 imóvel';
       } else {
-        btnApproveWhatsappSend.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Aprovar & Criar Grupo no WhatsApp (${count} opções)`;
+        btnApproveWhatsappSend.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Aprovar & Enviar no WhatsApp (${count} opções)`;
       }
     }
   }
@@ -4451,12 +4443,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const consultantPhone = whatsappInputConsultantPhone ? whatsappInputConsultantPhone.value.trim() : '';
       const introMessage = whatsappIntroText ? whatsappIntroText.value.trim() : '';
       const outroMessage = whatsappOutroText ? whatsappOutroText.value.trim() : '';
-
-      if (!clientPhone) {
-        showToast('Por favor introduza o número de telemóvel do cliente.', 'error');
-        if (whatsappInputClientPhone) whatsappInputClientPhone.focus();
-        return;
-      }
 
       btnApproveWhatsappSend.disabled = true;
       if (whatsappSendLoading) whatsappSendLoading.classList.remove('hidden');
@@ -4479,12 +4465,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
 
         if (data.success) {
-          showToast(`🎉 ${data.message || 'Grupo criado e opções enviadas com sucesso no WhatsApp!'}`);
+          showToast(`🎉 ${data.message || 'Opções enviadas e registadas com sucesso!'}`);
 
           if (modalWhatsappApproval) modalWhatsappApproval.classList.add('hidden');
 
+          // If fallback mode (e.g. on Vercel), copy full text and open WhatsApp Web directly
+          if (data.is_fallback) {
+            if (data.full_message) {
+              copyToClipboard(data.full_message, 'Mensagem WhatsApp completa copiada para a área de transferência! 📋');
+            }
+            if (data.whatsapp_web_url) {
+              window.open(data.whatsapp_web_url, '_blank');
+            }
+          }
+
           // Update local client
-          currentApprovalClient.phone = clientPhone;
+          if (clientPhone) currentApprovalClient.phone = clientPhone;
           if (data.group && data.group.groupId) {
             currentApprovalClient.whatsapp_group_id = data.group.groupId;
             currentApprovalClient.whatsapp_group_link = data.group.inviteLink;
@@ -4561,9 +4557,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Check WhatsApp status on app launch & keep live
+  // Check WhatsApp status on app launch
   checkWhatsAppStatus();
-  setInterval(checkWhatsAppStatus, 5000);
 
   // Load visits on application startup
   loadVisits();
