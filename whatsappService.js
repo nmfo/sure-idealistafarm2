@@ -106,7 +106,7 @@ class WhatsAppService {
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    let version = [2, 3000, 1015901307];
+    let version = [2, 3000, 1043857760];
     try {
       if (fetchLatestBaileysVersion) {
         const v = await fetchLatestBaileysVersion();
@@ -114,12 +114,16 @@ class WhatsAppService {
       }
     } catch (e) {}
 
+    const browserTuple = (makeWASocket && makeWASocket.Browsers)
+      ? makeWASocket.Browsers.windows('Desktop')
+      : (typeof baileys !== 'undefined' && baileys?.Browsers ? baileys.Browsers.windows('Desktop') : ['Windows', 'Desktop', '10.0.22631']);
+
     this.sock = makeWASocket({
       version,
       auth: state,
-      logger: pino({ level: 'silent' }),
+      logger: pino ? pino({ level: 'silent' }) : undefined,
       printQRInTerminal: false,
-      browser: ['SURE Real Estate', 'Chrome', '1.0.0'],
+      browser: browserTuple,
       syncFullHistory: false
     });
 
@@ -130,8 +134,11 @@ class WhatsAppService {
 
       if (qr) {
         try {
-          this.qrCodeDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 7 });
+          if (qrcode) {
+            this.qrCodeDataUrl = await qrcode.toDataURL(qr, { margin: 2, scale: 8 });
+          }
           this.isConnecting = true;
+          console.log('⚡ Novo QR Code WhatsApp gerado pronto para leitura');
         } catch (qrErr) {
           console.error('Erro ao gerar QR Base64:', qrErr);
         }
