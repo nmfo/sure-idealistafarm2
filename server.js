@@ -199,7 +199,18 @@ app.get('/api/whatsapp/status', (req, res) => {
 
 app.post('/api/whatsapp/connect', async (req, res) => {
   try {
-    const result = await getWhatsApp().connect();
+    const forceClean = req.body && req.body.force_clean;
+    const result = await getWhatsApp().connect(forceClean);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/pairing-code', async (req, res) => {
+  try {
+    const phone = (req.body && req.body.phone) || '932022674';
+    const result = await getWhatsApp().requestPairingCode(phone);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

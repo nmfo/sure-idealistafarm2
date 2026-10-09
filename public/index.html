@@ -1293,50 +1293,95 @@
 </div>
 
 <!-- Modal WhatsApp 1: Conexão e QR Code -->
+<!-- Modal WhatsApp 1: Conexão / Status / QR Code / Pairing Code -->
 <div id="modal-whatsapp-connect" class="modal-backdrop hidden">
-  <div class="modal-card" style="max-width:480px;">
+  <div class="modal-card" style="max-width:520px;">
     <div class="modal-header">
       <div style="display:flex; align-items:center; gap:10px;">
-        <i class="fa-brands fa-whatsapp" style="color:#25D366; font-size:1.5rem;"></i>
+        <i class="fa-brands fa-whatsapp" style="color:#25D366; font-size:1.6rem;"></i>
         <div>
-          <h3 style="margin:0; font-size:1.1rem;">WhatsApp Oficial SURE</h3>
-          <small style="color:#777;">Número Geral: <strong>932 022 674</strong></small>
+          <h3 style="margin:0; font-size:1.15rem;">WhatsApp Oficial SURE</h3>
+          <small style="color:#666;">Número Geral: <strong>932 022 674</strong></small>
         </div>
       </div>
       <button type="button" class="btn-close-modal">&times;</button>
     </div>
-    <div class="modal-body" style="padding:1.2rem; text-align:center;">
-      <!-- Connection Status Card -->
-      <div id="whatsapp-status-card" class="whatsapp-status-box" style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:1.2rem; margin-bottom:1.2rem;">
-        <div id="whatsapp-status-icon" style="font-size:2rem; color:#22C55E; margin-bottom:0.5rem;">
+    <div class="modal-body" style="padding:1.2rem;">
+      <!-- Connection Status Card (Shown when connected) -->
+      <div id="whatsapp-status-card" class="whatsapp-status-box" style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:12px; padding:1.2rem; margin-bottom:1.2rem; text-align:center;">
+        <div id="whatsapp-status-icon" style="font-size:2.2rem; color:#22C55E; margin-bottom:0.5rem;">
           <i class="fa-solid fa-circle-check"></i>
         </div>
-        <h4 id="whatsapp-status-title" style="margin:0 0 4px 0; color:#15803D; font-size:1.05rem;">WhatsApp Conectado</h4>
-        <p id="whatsapp-status-details" style="margin:0; font-size:0.85rem; color:#166534;">Número Ativo: <strong>+351 932 022 674</strong></p>
+        <h4 id="whatsapp-status-title" style="margin:0 0 4px 0; color:#15803D; font-size:1.1rem;">WhatsApp Conectado</h4>
+        <p id="whatsapp-status-details" style="margin:0; font-size:0.88rem; color:#166534;">Número Ativo: <strong>+351 932 022 674</strong></p>
       </div>
 
-      <!-- QR Code Box (hidden when connected) -->
-      <div id="whatsapp-qr-box" class="hidden" style="display:none; margin:1rem 0;">
-        <p style="font-size:0.88rem; color:#555; margin-bottom:0.8rem; line-height:1.4;">
-          Abra o WhatsApp no telemóvel geral (<strong>932 022 674</strong>), vá a <strong>Dispositivos Conectados</strong> e aponte a câmara para o código:
-        </p>
-        <div style="display:inline-block; padding:10px; background:#fff; border:2px solid #25D366; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,0.08);">
-          <img id="whatsapp-qr-img" src="" alt="QR Code WhatsApp" style="width:230px; height:230px; display:block;">
-        </div>
-        <div style="margin-top:10px;">
-          <button type="button" id="btn-refresh-whatsapp-qr" class="btn btn-secondary btn-sm">
-            <i class="fa-solid fa-arrows-rotate"></i> Atualizar Código
+      <!-- Pairing Section (Shown when disconnected) -->
+      <div id="whatsapp-pairing-section">
+        <!-- Method Toggle Tabs -->
+        <div style="display:flex; background:#EDE3D8; border-radius:10px; padding:4px; margin-bottom:1.2rem;">
+          <button type="button" id="tab-btn-pairing-code" class="btn-sm" style="flex:1; border:none; background:#fff; font-weight:700; color:var(--terracota); border-radius:8px; padding:8px 12px; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.06);">
+            <i class="fa-solid fa-key"></i> Código de 8 Dígitos <span style="font-size:0.7rem; background:#C75233; color:#fff; padding:2px 6px; border-radius:10px; margin-left:4px;">Mais Fácil</span>
+          </button>
+          <button type="button" id="tab-btn-qr-code" class="btn-sm" style="flex:1; border:none; background:transparent; font-weight:600; color:#666; border-radius:8px; padding:8px 12px; cursor:pointer;">
+            <i class="fa-solid fa-qrcode"></i> Ler QR Code
           </button>
         </div>
+
+        <!-- TAB 1: PAIRING CODE (Recommended) -->
+        <div id="tab-content-pairing-code" style="text-align:left;">
+          <div style="background:#FAF8F5; border:1px solid #E5DFD7; border-radius:10px; padding:12px; margin-bottom:12px;">
+            <label style="display:block; font-size:0.82rem; font-weight:700; color:var(--castanho); margin-bottom:6px;">
+              Número do Telemóvel WhatsApp:
+            </label>
+            <div style="display:flex; gap:8px;">
+              <input type="tel" id="whatsapp-pairing-phone-input" value="932 022 674" placeholder="932 022 674" style="flex:1; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; font-size:0.95rem; font-weight:600;">
+              <button type="button" id="btn-request-pairing-code" class="btn btn-primary btn-sm" style="background:#25D366; border-color:#25D366; white-space:nowrap; padding:0 14px;">
+                <i class="fa-solid fa-bolt"></i> Obter Código
+              </button>
+            </div>
+          </div>
+
+          <!-- Code Display Box -->
+          <div id="whatsapp-pairing-code-result" class="hidden" style="display:none; text-align:center; background:#F0FDF4; border:2px dashed #22C55E; border-radius:12px; padding:16px; margin-bottom:12px;">
+            <small style="color:#166534; font-weight:700; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:6px;">O Seu Código de Emparelhamento:</small>
+            <div id="whatsapp-pairing-code-digits" style="font-size:2.2rem; font-weight:800; letter-spacing:4px; color:#15803D; font-family:monospace; margin-bottom:8px; user-select:all;">
+              ---- ----
+            </div>
+            <p style="margin:0; font-size:0.85rem; color:#166534; line-height:1.4;">
+              1. No telemóvel <strong>932 022 674</strong>, abra o WhatsApp.<br>
+              2. Vá a <strong>Dispositivos Conectados</strong> &gt; <strong>Conectar um dispositivo</strong>.<br>
+              3. Toque em <strong>"Conectar com número de telefone"</strong> no fundo do ecrã e digite o código acima.
+            </p>
+          </div>
+        </div>
+
+        <!-- TAB 2: QR CODE -->
+        <div id="tab-content-qr-code" class="hidden" style="display:none; text-align:center;">
+          <p style="font-size:0.85rem; color:#555; margin-bottom:0.8rem; line-height:1.4;">
+            Abra o WhatsApp no telemóvel geral (<strong>932 022 674</strong>), vá a <strong>Dispositivos Conectados</strong> e aponte a câmara:
+          </p>
+          <div style="display:inline-block; padding:10px; background:#fff; border:2px solid #25D366; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,0.08);">
+            <img id="whatsapp-qr-img" src="" alt="QR Code WhatsApp" style="width:230px; height:230px; display:block;">
+          </div>
+          <div style="margin-top:10px; display:flex; justify-content:center; gap:8px;">
+            <button type="button" id="btn-refresh-whatsapp-qr" class="btn btn-secondary btn-sm">
+              <i class="fa-solid fa-arrows-rotate"></i> Atualizar QR
+            </button>
+            <button type="button" id="btn-reset-whatsapp-session" class="btn btn-secondary btn-sm" style="color:#C75233; border-color:#FECACA;">
+              <i class="fa-solid fa-trash"></i> Reset Limpo
+            </button>
+          </div>
+        </div>
       </div>
 
-      <!-- Actions -->
+      <!-- Actions Footer -->
       <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
         <button type="button" id="btn-disconnect-whatsapp" class="btn btn-secondary btn-sm" style="color:#DC2626; border-color:#FECACA;">
           <i class="fa-solid fa-power-off"></i> Desconectar Sessão
         </button>
-        <button type="button" id="btn-reconnect-whatsapp" class="btn btn-primary btn-sm" style="background:#25D366; border-color:#25D366;">
-          <i class="fa-solid fa-qrcode"></i> Conectar / Gerar QR
+        <button type="button" class="btn btn-secondary btn-sm btn-close-modal">
+          Fechar
         </button>
       </div>
     </div>

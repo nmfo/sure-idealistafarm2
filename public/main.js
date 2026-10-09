@@ -4147,7 +4147,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function updateWhatsAppUI(status) {
+    function updateWhatsAppUI(status) {
     if (!status) return;
 
     if (btnOpenWhatsappModal) {
@@ -4156,12 +4156,17 @@ document.addEventListener('DOMContentLoaded', () => {
         btnOpenWhatsappModal.title = `WhatsApp Conectado (${status.userNumber || '932 022 674'})`;
       } else if (status.isConnecting) {
         btnOpenWhatsappModal.style.color = '#EAB308';
-        btnOpenWhatsappModal.title = 'WhatsApp: A aguardar leitura de QR Code...';
+        btnOpenWhatsappModal.title = 'WhatsApp: A aguardar conexão...';
       } else {
         btnOpenWhatsappModal.style.color = '#94A3B8';
         btnOpenWhatsappModal.title = 'WhatsApp (Clique para Conectar)';
       }
     }
+
+    const pairingSection = document.getElementById('whatsapp-pairing-section');
+    const pairingResultBox = document.getElementById('whatsapp-pairing-code-result');
+    const pairingDigitsEl = document.getElementById('whatsapp-pairing-code-digits');
+    const qrImg = document.getElementById('whatsapp-qr-img');
 
     if (modalWhatsappConnect && !modalWhatsappConnect.classList.contains('hidden')) {
       if (status.isConnected) {
@@ -4181,49 +4186,126 @@ document.addEventListener('DOMContentLoaded', () => {
         if (whatsappStatusDetails) {
           whatsappStatusDetails.innerHTML = `Sessão ativa no número: <strong>+${status.userNumber || '351 932 022 674'}</strong> (Conta Geral SURE)<br><small style="color:#15803D;margin-top:6px;display:block;">Já pode fechar esta janela e enviar opções nos clientes.</small>`;
         }
-        if (whatsappQrBox) {
-          whatsappQrBox.style.display = 'none';
-          whatsappQrBox.classList.add('hidden');
-        }
+        if (pairingSection) pairingSection.style.display = 'none';
         if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'inline-flex';
-        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'none';
-      } else if (status.qrCodeDataUrl) {
+      } else {
         if (whatsappStatusCard) {
           whatsappStatusCard.style.display = 'none';
           whatsappStatusCard.classList.add('hidden');
         }
-        if (whatsappQrBox) {
-          whatsappQrBox.style.display = 'block';
-          whatsappQrBox.classList.remove('hidden');
-          if (whatsappQrImg) whatsappQrImg.src = status.qrCodeDataUrl;
-        }
+        if (pairingSection) pairingSection.style.display = 'block';
         if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'none';
-        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'none';
-      } else {
-        if (whatsappStatusCard) {
-          whatsappStatusCard.style.display = 'block';
-          whatsappStatusCard.classList.remove('hidden');
-          whatsappStatusCard.style.background = '#FEF2F2';
-          whatsappStatusCard.style.borderColor = '#FECACA';
+
+        if (status.pairingCode && pairingResultBox && pairingDigitsEl) {
+          pairingDigitsEl.textContent = status.pairingCode;
+          pairingResultBox.style.display = 'block';
+          pairingResultBox.classList.remove('hidden');
         }
-        if (whatsappStatusIcon) {
-          whatsappStatusIcon.innerHTML = '<i class="fa-solid fa-circle-xmark" style="color:#EF4444;"></i>';
+
+        if (status.qrCodeDataUrl && qrImg) {
+          qrImg.src = status.qrCodeDataUrl;
         }
-        if (whatsappStatusTitle) {
-          whatsappStatusTitle.textContent = 'WhatsApp Desconectado';
-          whatsappStatusTitle.style.color = '#B91C1C';
-        }
-        if (whatsappStatusDetails) {
-          whatsappStatusDetails.innerHTML = 'Clique no botão abaixo para gerar o QR Code de conexão.';
-        }
-        if (whatsappQrBox) {
-          whatsappQrBox.style.display = 'none';
-          whatsappQrBox.classList.add('hidden');
-        }
-        if (btnDisconnectWhatsapp) btnDisconnectWhatsapp.style.display = 'none';
-        if (btnReconnectWhatsapp) btnReconnectWhatsapp.style.display = 'inline-flex';
       }
     }
+  }
+
+  // Tab switching inside WhatsApp modal
+  const tabBtnPairing = document.getElementById('tab-btn-pairing-code');
+  const tabBtnQr = document.getElementById('tab-btn-qr-code');
+  const tabContentPairing = document.getElementById('tab-content-pairing-code');
+  const tabContentQr = document.getElementById('tab-content-qr-code');
+  const btnRequestPairingCode = document.getElementById('btn-request-pairing-code');
+  const inputPairingPhone = document.getElementById('whatsapp-pairing-phone-input');
+  const btnResetSession = document.getElementById('btn-reset-whatsapp-session');
+
+  if (tabBtnPairing && tabBtnQr) {
+    tabBtnPairing.addEventListener('click', () => {
+      tabBtnPairing.style.background = '#fff';
+      tabBtnPairing.style.color = 'var(--terracota)';
+      tabBtnPairing.style.boxShadow = '0 2px 4px rgba(0,0,0,0.06)';
+      tabBtnQr.style.background = 'transparent';
+      tabBtnQr.style.color = '#666';
+      tabBtnQr.style.boxShadow = 'none';
+      if (tabContentPairing) tabContentPairing.style.display = 'block';
+      if (tabContentQr) tabContentQr.style.display = 'none';
+    });
+
+    tabBtnQr.addEventListener('click', async () => {
+      tabBtnQr.style.background = '#fff';
+      tabBtnQr.style.color = 'var(--terracota)';
+      tabBtnQr.style.boxShadow = '0 2px 4px rgba(0,0,0,0.06)';
+      tabBtnPairing.style.background = 'transparent';
+      tabBtnPairing.style.color = '#666';
+      tabBtnPairing.style.boxShadow = 'none';
+      if (tabContentQr) tabContentQr.style.display = 'block';
+      if (tabContentPairing) tabContentPairing.style.display = 'none';
+
+      // Gerar QR se ainda não houver
+      const curStatus = await checkWhatsAppStatus();
+      if (!curStatus || (!curStatus.qrCodeDataUrl && !curStatus.isConnected)) {
+        try {
+          const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
+          const data = await res.json();
+          if (data.status) updateWhatsAppUI(data.status);
+        } catch(e) {}
+      }
+    });
+  }
+
+  if (btnRequestPairingCode) {
+    btnRequestPairingCode.addEventListener('click', async () => {
+      const phone = inputPairingPhone ? inputPairingPhone.value.trim() : '932022674';
+      btnRequestPairingCode.disabled = true;
+      btnRequestPairingCode.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> A gerar...';
+
+      try {
+        showToast('A gerar código de emparelhamento...', 'info');
+        const res = await fetch('/api/whatsapp/pairing-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+        const data = await res.json();
+        if (data.success && data.pairingCode) {
+          const pairingResultBox = document.getElementById('whatsapp-pairing-code-result');
+          const pairingDigitsEl = document.getElementById('whatsapp-pairing-code-digits');
+          if (pairingDigitsEl) pairingDigitsEl.textContent = data.pairingCode;
+          if (pairingResultBox) {
+            pairingResultBox.style.display = 'block';
+            pairingResultBox.classList.remove('hidden');
+          }
+          copyToClipboard(data.rawCode || data.pairingCode, 'Código copiado! Insira no WhatsApp do seu telemóvel.');
+          showToast(`📲 Código WhatsApp: ${data.pairingCode}`, 'success');
+        } else {
+          showToast(`Erro: ${data.error || 'Não foi possível obter o código'}`, 'error');
+        }
+      } catch (err) {
+        showToast(`Erro de ligação: ${err.message}`, 'error');
+      } finally {
+        btnRequestPairingCode.disabled = false;
+        btnRequestPairingCode.innerHTML = '<i class="fa-solid fa-bolt"></i> Obter Código';
+      }
+    });
+  }
+
+  if (btnResetSession) {
+    btnResetSession.addEventListener('click', async () => {
+      if (!confirm('Deseja limpar todos os dados e gerar uma sessão 100% nova?')) return;
+      try {
+        showToast('A reiniciar sessão do zero...', 'info');
+        await fetch('/api/whatsapp/disconnect', { method: 'POST' });
+        const res = await fetch('/api/whatsapp/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force_clean: true })
+        });
+        const data = await res.json();
+        if (data.status) updateWhatsAppUI(data.status);
+        showToast('Novo QR Code gerado com sucesso!');
+      } catch (err) {
+        showToast(`Erro: ${err.message}`, 'error');
+      }
+    });
   }
 
   if (btnOpenWhatsappModal) {
@@ -4231,55 +4313,38 @@ document.addEventListener('DOMContentLoaded', () => {
       if (modalWhatsappConnect) modalWhatsappConnect.classList.remove('hidden');
       const status = await checkWhatsAppStatus();
 
-      if (status && !status.isConnected && !status.qrCodeDataUrl) {
-        if (btnReconnectWhatsapp) btnReconnectWhatsapp.click();
-      }
-
       if (whatsappPollInterval) clearInterval(whatsappPollInterval);
       whatsappPollInterval = setInterval(checkWhatsAppStatus, 2500);
     });
   }
 
-  if (btnRefreshWhatsappQr || btnReconnectWhatsapp) {
-    const handleConnect = async () => {
+  if (btnRefreshWhatsappQr) {
+    btnRefreshWhatsappQr.addEventListener('click', async () => {
       try {
-        const curStatus = await checkWhatsAppStatus();
-        if (curStatus && curStatus.isConnected) {
-          showToast('WhatsApp já está conectado com sucesso!', 'info');
-          return;
-        }
-
-        showToast('A gerar novo QR Code WhatsApp...', 'info');
-        const res = await fetch('/api/whatsapp/connect', { method: 'POST' });
+        showToast('A atualizar QR Code...', 'info');
+        const res = await fetch('/api/whatsapp/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force_clean: true })
+        });
         const data = await res.json();
-        if (data.success) {
-          updateWhatsAppUI(data.status);
-        } else {
-          showToast(`Aviso: ${data.error || 'A aguardar inicialização do serviço'}`, 'info');
-        }
+        if (data.status) updateWhatsAppUI(data.status);
       } catch (err) {
-        showToast(`Aviso de conexão: ${err.message}`, 'info');
+        showToast(`Aviso: ${err.message}`, 'info');
       }
-    };
-    if (btnRefreshWhatsappQr) btnRefreshWhatsappQr.addEventListener('click', handleConnect);
-    if (btnReconnectWhatsapp) btnReconnectWhatsapp.addEventListener('click', handleConnect);
+    });
   }
 
   if (btnDisconnectWhatsapp) {
     btnDisconnectWhatsapp.addEventListener('click', async () => {
-      if (!confirm('Deseja realmente desconectar e ler um novo QR Code?')) return;
+      if (!confirm('Deseja realmente desconectar a sessão do WhatsApp?')) return;
       try {
         showToast('A desconectar sessão...', 'info');
         const res = await fetch('/api/whatsapp/disconnect', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
-          showToast('Sessão desconectada. A gerar novo QR Code...');
+          showToast('Sessão desconectada.');
           await checkWhatsAppStatus();
-          setTimeout(async () => {
-            const cRes = await fetch('/api/whatsapp/connect', { method: 'POST' });
-            const cData = await cRes.json();
-            if (cData.status) updateWhatsAppUI(cData.status);
-          }, 600);
         }
       } catch (err) {
         showToast(`Erro ao desconectar: ${err.message}`, 'error');

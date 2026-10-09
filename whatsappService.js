@@ -1,6 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+
 let qrcode, pino;
 try {
   qrcode = require('qrcode');
@@ -14,14 +15,14 @@ try {
   console.warn('⚠️ pino não carregado:', e.message);
 }
 
-// Import Baileys conditionally
-let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion;
+let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers;
 try {
   const baileys = require('@whiskeysockets/baileys');
   makeWASocket = baileys.default || baileys.makeWASocket;
   useMultiFileAuthState = baileys.useMultiFileAuthState;
   DisconnectReason = baileys.DisconnectReason;
   fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+  Browsers = baileys.Browsers;
 } catch (e) {
   console.warn('⚠️ @whiskeysockets/baileys não carregado:', e.message);
 }
@@ -36,6 +37,7 @@ class WhatsAppService {
   constructor() {
     this.sock = null;
     this.qrCodeDataUrl = null;
+    this.pairingCode = null;
     this.isConnected = false;
     this.isConnecting = false;
     this.userNumber = null;
@@ -49,17 +51,14 @@ class WhatsAppService {
     let digits = String(rawPhone).replace(/\D/g, '');
     if (!digits) return null;
 
-    // Se começa com 00 (ex: 00351...), remove os zeros
     if (digits.startsWith('00')) {
       digits = digits.substring(2);
     }
 
-    // Se tem 9 dígitos e começa com 9 ou 2 ou 3 (número PT sem DDI), adiciona 351
     if (digits.length === 9 && (digits.startsWith('9') || digits.startsWith('2') || digits.startsWith('3'))) {
       digits = '351' + digits;
     }
 
-    // Se tem 10 ou 11 dígitos e começa com 55 (Brasil sem o 55 duplicado), mantém
     return `${digits}@s.whatsapp.net`;
   }
 
@@ -81,6 +80,7 @@ class WhatsAppService {
       isConnected: this.isConnected,
       isConnecting: this.isConnecting,
       qrCodeDataUrl: this.qrCodeDataUrl,
+      pairingCode: this.pairingCode,
       userNumber: this.userNumber,
       generalNumber: this.generalNumber,
       generalJid: this.generalJid,
@@ -88,21 +88,20 @@ class WhatsAppService {
     };
   }
 
-  async connect() {
+  async _initSocket(forceClean = false) {
     if (!makeWASocket || !useMultiFileAuthState) {
       throw new Error('Módulo Baileys não disponível');
     }
 
-    if (this.sock && this.isConnected) {
-      return { success: true, message: 'Já conectado!', status: this.getStatus() };
+    if (forceClean && fs.existsSync(AUTH_DIR)) {
+      try {
+        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      } catch (e) {}
     }
 
     if (!fs.existsSync(AUTH_DIR)) {
       fs.mkdirSync(AUTH_DIR, { recursive: true });
     }
-
-    this.isConnecting = true;
-    this.lastError = null;
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
@@ -114,22 +113,23 @@ class WhatsAppService {
       }
     } catch (e) {}
 
-    const browserTuple = (makeWASocket && makeWASocket.Browsers)
-      ? makeWASocket.Browsers.windows('Desktop')
-      : (typeof baileys !== 'undefined' && baileys?.Browsers ? baileys.Browsers.windows('Desktop') : ['Windows', 'Desktop', '10.0.22631']);
+    const browserTuple = Browsers ? Browsers.ubuntu('Chrome') : ['Ubuntu', 'Chrome', '22.04.4'];
 
-    this.sock = makeWASocket({
+    const sock = makeWASocket({
       version,
       auth: state,
       logger: pino ? pino({ level: 'silent' }) : undefined,
       printQRInTerminal: false,
       browser: browserTuple,
-      syncFullHistory: false
+      syncFullHistory: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000
     });
 
-    this.sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', saveCreds);
 
-    this.sock.ev.on('connection.update', async (update) => {
+    sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
@@ -146,16 +146,17 @@ class WhatsAppService {
 
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        const shouldReconnect = statusCode !== DisconnectReason?.loggedOut;
         this.isConnected = false;
         this.isConnecting = false;
         this.qrCodeDataUrl = null;
+        this.pairingCode = null;
         this.userNumber = null;
         this.lastError = lastDisconnect?.error?.message || 'Conexão terminada';
 
         console.log(`⚠️ Conexão WhatsApp encerrada (code: ${statusCode}). Reconectar? ${shouldReconnect}`);
 
-        if (statusCode === DisconnectReason.loggedOut) {
+        if (statusCode === DisconnectReason?.loggedOut) {
           try {
             fs.rmSync(AUTH_DIR, { recursive: true, force: true });
           } catch (e) {}
@@ -164,15 +165,75 @@ class WhatsAppService {
         this.isConnected = true;
         this.isConnecting = false;
         this.qrCodeDataUrl = null;
+        this.pairingCode = null;
         this.lastError = null;
 
-        const userJid = this.sock.user?.id || '';
+        const userJid = sock.user?.id || '';
         this.userNumber = userJid.split(':')[0] || userJid.split('@')[0];
         console.log(`✅ WhatsApp conectado com sucesso! Número ativo: ${this.userNumber}`);
       }
     });
 
+    this.sock = sock;
+    return sock;
+  }
+
+  async connect(forceClean = false) {
+    if (this.sock && this.isConnected) {
+      return { success: true, message: 'Já conectado!', status: this.getStatus() };
+    }
+
+    this.isConnecting = true;
+    this.lastError = null;
+    this.pairingCode = null;
+
+    await this._initSocket(forceClean);
+
     return { success: true, message: 'Processo de conexão iniciado.', status: this.getStatus() };
+  }
+
+  async requestPairingCode(phoneNumber = GENERAL_PHONE) {
+    if (this.sock && this.isConnected) {
+      return { success: true, message: 'Já conectado!', status: this.getStatus() };
+    }
+
+    let digits = String(phoneNumber || GENERAL_PHONE).replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.substring(2);
+    if (digits.length === 9 && (digits.startsWith('9') || digits.startsWith('2') || digits.startsWith('3'))) {
+      digits = '351' + digits;
+    }
+
+    this.isConnecting = true;
+    this.lastError = null;
+    this.qrCodeDataUrl = null;
+
+    if (!this.sock) {
+      await this._initSocket(true);
+    }
+
+    await new Promise(r => setTimeout(r, 1500));
+
+    try {
+      const code = await this.sock.requestPairingCode(digits);
+      const formattedCode = code ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+      this.pairingCode = formattedCode;
+      console.log(`📲 Código de emparelhamento WhatsApp gerado para ${digits}: ${formattedCode}`);
+      return {
+        success: true,
+        pairingCode: formattedCode,
+        rawCode: code,
+        phone: digits,
+        status: this.getStatus()
+      };
+    } catch (err) {
+      console.error('Erro ao pedir pairing code:', err);
+      this.lastError = err.message;
+      return {
+        success: false,
+        error: err.message,
+        status: this.getStatus()
+      };
+    }
   }
 
   async disconnect() {
@@ -185,6 +246,7 @@ class WhatsAppService {
     this.isConnected = false;
     this.isConnecting = false;
     this.qrCodeDataUrl = null;
+    this.pairingCode = null;
     this.userNumber = null;
     try {
       if (fs.existsSync(AUTH_DIR)) {
@@ -206,19 +268,17 @@ class WhatsAppService {
 
   async createOrGetClientGroup(client, consultant, customClientPhone = null, customConsultantPhone = null) {
     if (!this.sock || !this.isConnected) {
-      throw new Error('WhatsApp não está conectado. Conecte-o primeiro escaneando o QR Code.');
+      throw new Error('WhatsApp não está conectado. Conecte-o primeiro escaneando o QR Code ou inserindo o Código de Emparelhamento.');
     }
 
     const groupTitle = `[SURE] ${(client.name || 'Cliente').trim()}`.substring(0, 80);
 
-    // Verificar se o cliente já tem um grupo existente
     if (client.whatsapp_group_id) {
       try {
         const groupMeta = await this.sock.groupMetadata(client.whatsapp_group_id);
         if (groupMeta && groupMeta.id) {
           console.log(`Reutilizando grupo existente: ${groupMeta.subject} (${groupMeta.id})`);
 
-          // Obter foto de perfil existente ou aplicar SURE se não tiver
           let groupPictureUrl = null;
           try {
             groupPictureUrl = await this.sock.profilePictureUrl(groupMeta.id, 'image');
@@ -253,7 +313,6 @@ class WhatsAppService {
       }
     }
 
-    // Reunir participantes (Consultor + Cliente + Conta Geral)
     const clientPhone = customClientPhone || client.phone;
     const consultantPhone = customConsultantPhone || (consultant && consultant.phone);
 
@@ -263,7 +322,6 @@ class WhatsAppService {
 
     const participantsSet = new Set();
 
-    // Adicionar Conta Geral (se o bot conectado for um número diferente)
     const currentBotJid = this.formatPhoneJid(this.userNumber);
     if (generalJid && generalJid !== currentBotJid) {
       participantsSet.add(generalJid);
@@ -280,11 +338,9 @@ class WhatsAppService {
     const participants = Array.from(participantsSet);
     console.log(`Criando grupo "${groupTitle}" com participantes:`, participants);
 
-    // 1. Criar o grupo
     const group = await this.sock.groupCreate(groupTitle, participants);
     console.log(`✅ Grupo criado com sucesso! ID: ${group.id}`);
 
-    // 2. Definir a foto de perfil do grupo (Avatar SURE ajustado)
     let groupPictureUrl = null;
     if (fs.existsSync(AVATAR_FILE)) {
       try {
@@ -299,7 +355,6 @@ class WhatsAppService {
       }
     }
 
-    // 3. Obter link de convite oficial
     let inviteLink = '';
     try {
       const code = await this.sock.groupInviteCode(group.id);
@@ -331,7 +386,6 @@ class WhatsAppService {
 
     const consultantName = (consultant && consultant.name) || 'Consultor SURE';
 
-    // 1. Mensagem de Abertura / Boas-vindas
     const defaultIntro = `👋 Olá ${client.name}!\n\n` +
       `Criámos este grupo de acompanhamento com o seu consultor dedicado (*${consultantName}*) e a equipa *SURE. Real Estate*.\n\n` +
       `Selecionámos criteriosamente as melhores opções de imóveis de acordo com o que procura. Veja abaixo os detalhes e partilhe connosco o seu feedback:`;
@@ -340,16 +394,13 @@ class WhatsAppService {
 
     await this.sock.sendMessage(groupId, { text: finalIntro });
 
-    // Pequena pausa humana
     await new Promise(r => setTimeout(r, 1500));
 
-    // 2. Envio individual dos imóveis
     const sentResults = [];
     for (let i = 0; i < listings.length; i++) {
       const l = listings[i];
       const indexNum = i + 1;
 
-      // Montar mensagem formatada do imóvel
       const title = l.title || 'Imóvel em Destaque';
       const price = l.price || 'Consultar €';
       const location = l.location || client.location || 'Localização sob consulta';
@@ -363,7 +414,6 @@ class WhatsAppService {
         (l.specs && l.specs.length > 0 ? `✨ *Características:* ${l.specs.slice(0, 4).join(', ')}\n` : '') +
         (link ? `\n🔗 *Ver Anúncio Completo:* ${link}` : '');
 
-      // Verificar se tem foto
       const photoUrl = (l.photos && l.photos.length > 0 ? l.photos[0] : null) || l.img || null;
 
       try {
@@ -378,7 +428,6 @@ class WhatsAppService {
         sentResults.push({ id: l.id, success: true });
       } catch (sendErr) {
         console.warn(`Erro ao enviar imóvel ${l.id} com foto:`, sendErr.message);
-        // Fallback: enviar como texto simples
         try {
           await this.sock.sendMessage(groupId, { text: caption });
           sentResults.push({ id: l.id, success: true, fallback: true });
@@ -387,7 +436,6 @@ class WhatsAppService {
         }
       }
 
-      // Intervalo entre imóveis
       if (i < listings.length - 1) {
         await new Promise(r => setTimeout(r, 2000));
       }
@@ -404,7 +452,6 @@ class WhatsAppService {
 
 const whatsappService = new WhatsAppService();
 
-// Tentar inicialização se houver credenciais guardadas
 if (fs.existsSync(AUTH_DIR)) {
   const files = fs.readdirSync(AUTH_DIR);
   if (files.length > 0 && files.some(f => f.includes('creds.json'))) {
