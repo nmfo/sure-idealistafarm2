@@ -4153,7 +4153,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnOpenWhatsappModal) {
       if (status.isConnected) {
         btnOpenWhatsappModal.style.color = '#22C55E';
-        btnOpenWhatsappModal.title = `WhatsApp Conectado (${status.userNumber || '933 687 879'})`;
+        btnOpenWhatsappModal.title = `WhatsApp Conectado (${status.userNumber || '932 022 674'})`;
       } else if (status.isConnecting) {
         btnOpenWhatsappModal.style.color = '#EAB308';
         btnOpenWhatsappModal.title = 'WhatsApp: A aguardar leitura de QR Code...';
@@ -4179,7 +4179,7 @@ document.addEventListener('DOMContentLoaded', () => {
           whatsappStatusTitle.style.color = '#15803D';
         }
         if (whatsappStatusDetails) {
-          whatsappStatusDetails.innerHTML = `Sessão ativa no número: <strong>+${status.userNumber || '351 933 687 879'}</strong> (Conta Geral SURE)<br><small style="color:#15803D;margin-top:6px;display:block;">Já pode fechar esta janela e enviar opções nos clientes.</small>`;
+          whatsappStatusDetails.innerHTML = `Sessão ativa no número: <strong>+${status.userNumber || '351 932 022 674'}</strong> (Conta Geral SURE)<br><small style="color:#15803D;margin-top:6px;display:block;">Já pode fechar esta janela e enviar opções nos clientes.</small>`;
         }
         if (whatsappQrBox) {
           whatsappQrBox.style.display = 'none';

@@ -19,8 +19,8 @@ try {
 const IS_VERCEL = !!(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const AUTH_DIR = IS_VERCEL ? path.join(os.tmpdir(), 'sure_whatsapp_auth') : path.join(__dirname, 'data', 'whatsapp_auth');
 const AVATAR_FILE = path.join(__dirname, 'data', 'sure_group_avatar.jpg');
-const GENERAL_PHONE = '933687879'; // Conta Geral SURE: +351 933 687 879
-const GENERAL_JID = '351933687879@s.whatsapp.net';
+const GENERAL_PHONE = '932022674'; // Conta Geral SURE: +351 932 022 674
+const GENERAL_JID = '351932022674@s.whatsapp.net';
 
 class WhatsAppService {
   constructor() {
@@ -29,7 +29,7 @@ class WhatsAppService {
     this.isConnected = false;
     this.isConnecting = false;
     this.userNumber = null;
-    this.generalNumber = '933 687 879';
+    this.generalNumber = '932 022 674';
     this.generalJid = GENERAL_JID;
     this.lastError = null;
   }
